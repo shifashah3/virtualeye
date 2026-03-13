@@ -55,7 +55,7 @@ const CurrencyReaderScreen = () => {
     if (!cameraRef.current || isDetecting || !apiConnected) return;
     setIsDetecting(true);
     try {
-      const photo = await cameraRef.current.takePictureAsync({ quality: 0.8 });
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.8, shutterSound: false,  });
       if (!photo?.uri) throw new Error();
 
       const result = await detectCurrency(photo.uri, 0.5);

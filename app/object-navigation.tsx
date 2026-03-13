@@ -81,7 +81,7 @@ const ObjectNavigationScreen = () => {
 
     setIsDetecting(true);
     try {
-      const photo = await cameraRef.current.takePictureAsync({ quality: 0.8 });
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.8, shutterSound: false,  });
       if (!photo?.uri) return;
 
       const result = await detectObjectNavigation(photo.uri, 0.25);

@@ -120,7 +120,7 @@
 //   }
 // };
 
-// export const detectClothesWithColor = async (imageUri, confidence = 0.25) => {
+// export const detectClothesWithColor = async (imageUri, confidence = 0.35) => {
 //   return uploadImage("/detect-clothes-with-color", imageUri);
 // };
 
@@ -133,7 +133,7 @@ import { Platform } from "react-native";
 // IMPORTANT:
 // 192.168.18.255 is a broadcast address -> it will ALWAYS fail.
 // Put your laptop's REAL IP here (the one running FastAPI).
-export const API_BASE_URL = "http://192.168.18.51:8000"; // <-- CHANGE THIS
+export const API_BASE_URL = "http://192.168.18.206:8000"; // <-- CHANGE THIS
 
 // =====================
 // 2. Helper: build URL with query params
@@ -217,7 +217,7 @@ export const detectObjectsWithColor = async (imageUri, confidence = 0.25) => {
 // ✅ Clothes-with-color: map to your working endpoint to avoid 404
 // If your backend truly has /detect-clothes-with-color, you can switch back.
 // But your earlier error shows 404 on that route.
-export const detectClothesWithColor = async (imageUri, confidence = 0.25) => {
+export const detectClothesWithColor = async (imageUri, confidence = 0.3) => {
   return uploadImage("/detect-objects-with-color", imageUri, { confidence });
 };
 
