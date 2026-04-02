@@ -251,7 +251,13 @@
 
 import { Platform } from "react-native";
 
-export const API_BASE_URL = "http://192.168.18.206:8000";
+// =====================
+// 1. API Base URL
+// =====================
+// IMPORTANT:
+// 192.168.18.255 is a broadcast address -> it will ALWAYS fail.
+// Put your laptop's REAL IP here (the one running FastAPI).
+export const API_BASE_URL = "http://192.168.100.6:8000"; // <-- CHANGE THIS
 
 const buildUrl = (endpoint, params) => {
   const qs = new URLSearchParams();

@@ -2963,8 +2963,8 @@ _BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 _ASSETS_DIR = os.path.join(_BACKEND_DIR, "assets")
 
 # colleague dual-model object detection
-_CUSTOM_MODEL_PATH = os.environ.get("CUSTOM_MODEL_PATH", os.path.join(_ASSETS_DIR, "washroom_kitchen_only.pt"))
-_COCO_MODEL_PATH = os.environ.get("COCO_MODEL_PATH", os.path.join(_ASSETS_DIR, "yolov8n.pt"))
+_CUSTOM_MODEL_PATH = os.environ.get("CUSTOM_MODEL_PATH", os.path.join(_ASSETS_DIR, "object_detection_float16.tflite"))
+_COCO_MODEL_PATH   = os.environ.get("COCO_MODEL_PATH",   os.path.join(_ASSETS_DIR, "coco_yolo26n_int8.tflite"))
 
 # currency model
 _CURRENCY_MODEL_PATH = os.environ.get("CURRENCY_MODEL_PATH", os.path.join(_ASSETS_DIR, "yolo26-obb-tflite.tflite"))
