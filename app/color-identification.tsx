@@ -1,31 +1,537 @@
+// // // // // // import React, { useEffect, useMemo, useRef, useState } from "react";
+// // // // // // import {
+// // // // // //   ActivityIndicator,
+// // // // // //   Alert,
+// // // // // //   StyleSheet,
+// // // // // //   TouchableOpacity,
+// // // // // //   View,
+// // // // // // } from "react-native";
+// // // // // // import { useRouter } from "expo-router";
+// // // // // // import { CameraView, useCameraPermissions } from "expo-camera";
+// // // // // // import { useTranslation } from "react-i18next";
+
+// // // // // // // import { detectColor, checkApiHealth } from "../services/detectionApi";
+// // // // // // import { detectClothesWithColor, checkApiHealth } from "../services/detectionApi";
+// // // // // // import { useAccessibility } from "@/contexts/AccessibilityContext";
+// // // // // // import { useAccessibleColors } from "@/hooks/useAccessibleColors";
+// // // // // // import { AccessibleText } from "@/components/AccessibleText";
+// // // // // // import { AccessibleButton } from "@/components/AccessibleButton";
+
+// // // // // // type ApiColorResult =
+// // // // // //   | {
+// // // // // //       success: true;
+// // // // // //       data: { name: string; hex: string };
+// // // // // //     }
+// // // // // //   | {
+// // // // // //       success: false;
+// // // // // //       message?: string;
+// // // // // //     };
+
+// // // // // // const FALLBACK_COLORS = {
+// // // // // //   background: "#000000",
+// // // // // //   primary: "#1f2937",
+// // // // // //   text: "#ffffff",
+// // // // // //   textInverse: "#ffffff",
+// // // // // //   card: "#111827",
+// // // // // //   success: "#22c55e",
+// // // // // //   danger: "#ef4444",
+// // // // // //   warning: "#f59e0b",
+// // // // // //   disabled: "#6b7280",
+// // // // // // };
+
+// // // // // // export default function ColorIdentificationScreen() {
+// // // // // //   const router = useRouter();
+// // // // // //   const { t, i18n } = useTranslation();
+// // // // // //   const { speak, hapticFeedback } = useAccessibility();
+
+// // // // // //   // ✅ Prevent crash if hook returns undefined temporarily
+// // // // // //   const hookColors = useAccessibleColors();
+// // // // // //   const colors = useMemo(() => hookColors ?? FALLBACK_COLORS, [hookColors]);
+
+// // // // // //   const [permission, requestPermission] = useCameraPermissions();
+
+// // // // // //   const [apiConnected, setApiConnected] = useState(false);
+// // // // // //   const [checkingApi, setCheckingApi] = useState(false);
+
+// // // // // //   const [isDetecting, setIsDetecting] = useState(false);
+// // // // // //   const [isAutoDetecting, setIsAutoDetecting] = useState(false);
+
+// // // // // //   const [detectedColor, setDetectedColor] = useState("");
+// // // // // //   const [colorHex, setColorHex] = useState("");
+
+// // // // // //   const cameraRef = useRef<CameraView>(null);
+// // // // // //   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+// // // // // //   const lastSpokenRef = useRef<string>("");
+
+// // // // // //   // ----------------------------
+// // // // // //   // Announce screen + check API
+// // // // // //   // ----------------------------
+// // // // // //   useEffect(() => {
+// // // // // //     // announce on language change too
+// // // // // //     speak?.(t("color.announcement", "Color Identification mode."), true);
+// // // // // //     void checkConnection();
+// // // // // //     // eslint-disable-next-line react-hooks/exhaustive-deps
+// // // // // //   }, [i18n.language]);
+
+// // // // // //   // ----------------------------
+// // // // // //   // Auto-detect loop
+// // // // // //   // ----------------------------
+// // // // // //   useEffect(() => {
+// // // // // //     if (isAutoDetecting && apiConnected) {
+// // // // // //       if (intervalRef.current) clearInterval(intervalRef.current);
+// // // // // //       intervalRef.current = setInterval(() => {
+// // // // // //         void captureColor();
+// // // // // //       }, 2000);
+// // // // // //     } else {
+// // // // // //       if (intervalRef.current) clearInterval(intervalRef.current);
+// // // // // //       intervalRef.current = null;
+// // // // // //     }
+
+// // // // // //     return () => {
+// // // // // //       if (intervalRef.current) clearInterval(intervalRef.current);
+// // // // // //       intervalRef.current = null;
+// // // // // //     };
+// // // // // //     // eslint-disable-next-line react-hooks/exhaustive-deps
+// // // // // //   }, [isAutoDetecting, apiConnected]);
+
+// // // // // //   // ----------------------------
+// // // // // //   // API health
+// // // // // //   // ----------------------------
+// // // // // //   const checkConnection = async () => {
+// // // // // //     setCheckingApi(true);
+// // // // // //     try {
+// // // // // //       const ok = await checkApiHealth();
+// // // // // //       setApiConnected(ok);
+
+// // // // // //       if (!ok) {
+// // // // // //         Alert.alert(
+// // // // // //           t("common.apiErrorTitle", "API Not Connected"),
+// // // // // //           t(
+// // // // // //             "common.apiErrorBody",
+// // // // // //             "Cannot connect to detection server. Make sure:\n1. FastAPI server is running\n2. Both devices are on same WiFi\n3. IP address is correct in detectionApi"
+// // // // // //           )
+// // // // // //         );
+// // // // // //       }
+// // // // // //     } catch (e) {
+// // // // // //       setApiConnected(false);
+// // // // // //       Alert.alert(
+// // // // // //         t("common.apiErrorTitle", "API Not Connected"),
+// // // // // //         t(
+// // // // // //           "common.apiErrorBody",
+// // // // // //           "Cannot connect to detection server. Make sure the server is running and IP is correct."
+// // // // // //         )
+// // // // // //       );
+// // // // // //     } finally {
+// // // // // //       setCheckingApi(false);
+// // // // // //     }
+// // // // // //   };
+
+// // // // // //   // ----------------------------
+// // // // // //   // Capture & detect
+// // // // // //   // ----------------------------
+// // // // // //   const captureColor = async () => {
+// // // // // //     if (!apiConnected) return;
+// // // // // //     if (!permission?.granted) return;
+// // // // // //     if (!cameraRef.current) return;
+// // // // // //     if (isDetecting) return;
+
+// // // // // //     setIsDetecting(true);
+
+// // // // // //     try {
+// // // // // //       const photo = await cameraRef.current.takePictureAsync({
+// // // // // //         quality: 0.5,
+// // // // // //         base64: false,
+// // // // // //         exif: false,
+// // // // // //         shutterSound: false,
+// // // // // //       });
+
+// // // // // //       if (!photo?.uri) throw new Error("Failed to capture photo");
+
+// // // // // //       // const result = (await detectColor(photo.uri)) as ApiColorResult;
+// // // // // //       const result = await detectClothesWithColor(photo.uri, 0.35);
+
+// // // // // //       if (result?.success && result.data) {
+// // // // // //         const name = (result.data.name ?? "").trim();
+// // // // // //         const hex = (result.data.hex ?? "").trim();
+
+// // // // // //         if (!name) return;
+
+// // // // // //         setDetectedColor(name);
+// // // // // //         setColorHex(hex);
+
+// // // // // //         // Speak only when changed
+// // // // // //         const spokenKey = `${name.toLowerCase()}|${hex.toLowerCase()}`;
+// // // // // //         if (lastSpokenRef.current !== spokenKey) {
+// // // // // //           lastSpokenRef.current = spokenKey;
+// // // // // //           hapticFeedback?.("success");
+// // // // // //           speak?.(t("color.detected", "Detected {{color}}", { color: name }), true);
+// // // // // //         }
+// // // // // //       } else {
+// // // // // //         // If not success, don't spam alerts during auto mode
+// // // // // //         if (!isAutoDetecting) {
+// // // // // //           hapticFeedback?.("error");
+// // // // // //           speak?.(t("color.failed", "Detection failed. Please try again."), true);
+// // // // // //         }
+// // // // // //       }
+// // // // // //     } catch (err) {
+// // // // // //       if (!isAutoDetecting) {
+// // // // // //         hapticFeedback?.("error");
+// // // // // //         speak?.(t("color.failed", "Detection failed. Please try again."), true);
+// // // // // //         Alert.alert(
+// // // // // //           t("common.error", "Error"),
+// // // // // //           err instanceof Error ? err.message : "Unknown error"
+// // // // // //         );
+// // // // // //       }
+// // // // // //     } finally {
+// // // // // //       setIsDetecting(false);
+// // // // // //     }
+// // // // // //   };
+
+// // // // // //   // ----------------------------
+// // // // // //   // Toggle auto
+// // // // // //   // ----------------------------
+// // // // // //   const toggleAutoDetection = () => {
+// // // // // //     if (!apiConnected) {
+// // // // // //       hapticFeedback?.("error");
+// // // // // //       speak?.(t("common.apiNotConnected", "API not connected."), true);
+// // // // // //       Alert.alert(
+// // // // // //         t("common.apiNotConnectedTitle", "Not connected"),
+// // // // // //         t("common.apiNotConnectedBody", "API not connected. Please check connection.")
+// // // // // //       );
+// // // // // //       return;
+// // // // // //     }
+
+// // // // // //     if (!permission?.granted) {
+// // // // // //       hapticFeedback?.("error");
+// // // // // //       speak?.(t("common.cameraPermissionNeeded", "Camera permission is required."), true);
+// // // // // //       return;
+// // // // // //     }
+
+// // // // // //     const next = !isAutoDetecting;
+// // // // // //     setIsAutoDetecting(next);
+// // // // // //     hapticFeedback?.("medium");
+
+// // // // // //     if (next) {
+// // // // // //       lastSpokenRef.current = "";
+// // // // // //       speak?.(t("color.scanningStart", "Scanning started"), true);
+// // // // // //     } else {
+// // // // // //       speak?.(t("color.scanningStop", "Scanning stopped"), true);
+// // // // // //       setDetectedColor("");
+// // // // // //       setColorHex("");
+// // // // // //       lastSpokenRef.current = "";
+// // // // // //     }
+// // // // // //   };
+
+// // // // // //   // ----------------------------
+// // // // // //   // Permission screens
+// // // // // //   // ----------------------------
+// // // // // //   if (!permission) {
+// // // // // //     return <View style={[styles.root, { backgroundColor: colors.background }]} />;
+// // // // // //   }
+
+// // // // // //   if (!permission.granted) {
+// // // // // //     return (
+// // // // // //       <View style={[styles.root, { backgroundColor: colors.background }]}>
+// // // // // //         <View style={[styles.topBar, { backgroundColor: colors.primary }]}>
+// // // // // //           <AccessibleText
+// // // // // //             style={[styles.topTitle, { color: colors.textInverse }]}
+// // // // // //             level={1}
+// // // // // //           >
+// // // // // //             {t("color.title", "Color Identification")}
+// // // // // //           </AccessibleText>
+// // // // // //         </View>
+
+// // // // // //         <View style={[styles.permissionCenter, { backgroundColor: colors.background }]}>
+// // // // // //           <AccessibleText style={{ color: colors.text }}>
+// // // // // //             {t("common.cameraPermissionNeeded", "Camera permission is required.")}
+// // // // // //           </AccessibleText>
+
+// // // // // //           <AccessibleButton
+// // // // // //             title={t("common.allowCamera", "Allow Camera")}
+// // // // // //             onPress={requestPermission}
+// // // // // //             accessibilityLabel={t("common.allowCamera", "Allow Camera")}
+// // // // // //             accessibilityHint={t(
+// // // // // //               "common.allowCameraHint",
+// // // // // //               "Grants camera access to detect colors"
+// // // // // //             )}
+// // // // // //             style={[styles.permissionButton, { borderColor: colors.text }]}
+// // // // // //           />
+
+// // // // // //           <AccessibleButton
+// // // // // //             title={t("common.modes", "Modes")}
+// // // // // //             onPress={() => router.push("/features")}
+// // // // // //             style={styles.permissionButton}
+// // // // // //           />
+// // // // // //         </View>
+// // // // // //       </View>
+// // // // // //     );
+// // // // // //   }
+
+// // // // // //   // ----------------------------
+// // // // // //   // Main UI
+// // // // // //   // ----------------------------
+// // // // // //   return (
+// // // // // //     <View style={[styles.root, { backgroundColor: colors.background }]}>
+// // // // // //       {/* Header */}
+// // // // // //       <View style={[styles.topBar, { backgroundColor: colors.primary }]}>
+// // // // // //         <AccessibleText
+// // // // // //           style={[styles.topTitle, { color: colors.textInverse }]}
+// // // // // //           level={1}
+// // // // // //         >
+// // // // // //           {t("color.title", "Color Identification")}
+// // // // // //         </AccessibleText>
+// // // // // //       </View>
+
+// // // // // //       {/* Camera + overlays */}
+// // // // // //       <View style={styles.cameraContainer}>
+// // // // // //         <CameraView ref={cameraRef} style={styles.camera} facing="back" />
+
+// // // // // //         {/* API status */}
+// // // // // //         <View style={[styles.statusOverlay, { backgroundColor: colors.card }]}>
+// // // // // //           <View
+// // // // // //             style={[
+// // // // // //               styles.statusDot,
+// // // // // //               { backgroundColor: apiConnected ? colors.success : colors.danger },
+// // // // // //             ]}
+// // // // // //             accessible
+// // // // // //             accessibilityLabel={`Connection status: ${
+// // // // // //               apiConnected ? "Connected" : "Disconnected"
+// // // // // //             }`}
+// // // // // //           />
+// // // // // //           <AccessibleText style={[styles.statusText, { color: colors.text }]}>
+// // // // // //             {apiConnected ? t("common.connected", "Connected") : t("common.disconnected", "Disconnected")}
+// // // // // //           </AccessibleText>
+
+// // // // // //           <TouchableOpacity
+// // // // // //             onPress={checkConnection}
+// // // // // //             style={styles.refreshButton}
+// // // // // //             accessible
+// // // // // //             accessibilityRole="button"
+// // // // // //             accessibilityLabel={t("common.refresh", "Refresh")}
+// // // // // //             accessibilityHint={t("common.refreshHint", "Re-check API connection")}
+// // // // // //           >
+// // // // // //             {checkingApi ? (
+// // // // // //               <ActivityIndicator size="small" color={colors.text} />
+// // // // // //             ) : (
+// // // // // //               <AccessibleText style={[styles.refreshText, { color: colors.text }]}>
+// // // // // //                 🔄
+// // // // // //               </AccessibleText>
+// // // // // //             )}
+// // // // // //           </TouchableOpacity>
+// // // // // //         </View>
+
+// // // // // //         {/* Scanning indicator */}
+// // // // // //         {isAutoDetecting && (
+// // // // // //           <View style={[styles.detectingIndicator, { backgroundColor: colors.warning }]}>
+// // // // // //             <ActivityIndicator size="small" color={colors.textInverse} />
+// // // // // //             <AccessibleText style={[styles.detectingIndicatorText, { color: colors.textInverse }]}>
+// // // // // //               {t("color.scanning", "Scanning...")}
+// // // // // //             </AccessibleText>
+// // // // // //           </View>
+// // // // // //         )}
+
+// // // // // //         {/* Result */}
+// // // // // //         {detectedColor !== "" && (
+// // // // // //           <View style={styles.resultContainer}>
+// // // // // //             <View
+// // // // // //               style={[
+// // // // // //                 styles.colorSwatch,
+// // // // // //                 { backgroundColor: colorHex || "#000000" },
+// // // // // //               ]}
+// // // // // //               accessible
+// // // // // //               accessibilityLabel={t("color.sample", "Color sample")}
+// // // // // //             />
+// // // // // //             <AccessibleText style={styles.resultText}>
+// // // // // //               {detectedColor.toUpperCase()}
+// // // // // //             </AccessibleText>
+// // // // // //             {!!colorHex && <AccessibleText style={styles.hexText}>{colorHex}</AccessibleText>}
+// // // // // //           </View>
+// // // // // //         )}
+
+// // // // // //         {/* Toggle */}
+// // // // // //         <View style={styles.toggleOverlay}>
+// // // // // //           <AccessibleButton
+// // // // // //             title={
+// // // // // //               isAutoDetecting
+// // // // // //                 ? t("common.stopDetection", "Stop Detection")
+// // // // // //                 : t("common.startDetection", "Start Detection")
+// // // // // //             }
+// // // // // //             onPress={toggleAutoDetection}
+// // // // // //             disabled={!apiConnected}
+// // // // // //             style={[
+// // // // // //               styles.toggleButton,
+// // // // // //               isAutoDetecting && { backgroundColor: colors.danger },
+// // // // // //               !apiConnected && { backgroundColor: colors.disabled },
+// // // // // //             ]}
+// // // // // //             accessibilityLabel={
+// // // // // //               isAutoDetecting
+// // // // // //                 ? t("common.stopDetection", "Stop Detection")
+// // // // // //                 : t("common.startDetection", "Start Detection")
+// // // // // //             }
+// // // // // //             accessibilityHint={
+// // // // // //               apiConnected
+// // // // // //                 ? t("color.toggleHint", "Starts or stops automatic detection")
+// // // // // //                 : t("common.apiNotConnectedBody", "API not connected. Please check connection.")
+// // // // // //             }
+// // // // // //           />
+// // // // // //         </View>
+// // // // // //       </View>
+
+// // // // // //       {/* Bottom bar */}
+// // // // // //       <View style={[styles.bottomBar, { backgroundColor: colors.background }]}>
+// // // // // //         <AccessibleButton
+// // // // // //           title={t("common.modes", "Modes")}
+// // // // // //           onPress={() => {
+// // // // // //             setIsAutoDetecting(false);
+// // // // // //             hapticFeedback?.("light");
+// // // // // //             speak?.(t("common.goingToModes", "Navigating to modes"), true);
+// // // // // //             router.push("/features");
+// // // // // //           }}
+// // // // // //           style={styles.bottomButton}
+// // // // // //         />
+
+// // // // // //         <AccessibleButton
+// // // // // //           title={i18n.language === "ur" ? "اردو" : "ENG"}
+// // // // // //           onPress={() => {
+// // // // // //             hapticFeedback?.("light");
+// // // // // //             speak?.(
+// // // // // //               i18n.language === "ur"
+// // // // // //                 ? t("common.languageUrdu", "Language is Urdu")
+// // // // // //                 : t("common.languageEnglish", "Language is English"),
+// // // // // //               true
+// // // // // //             );
+// // // // // //           }}
+// // // // // //           style={styles.bottomButton}
+// // // // // //         />
+// // // // // //       </View>
+// // // // // //     </View>
+// // // // // //   );
+// // // // // // }
+
+// // // // // // const styles = StyleSheet.create({
+// // // // // //   root: { flex: 1 },
+
+// // // // // //   topBar: {
+// // // // // //     height: 120,
+// // // // // //     justifyContent: "center",
+// // // // // //     alignItems: "center",
+// // // // // //     borderBottomLeftRadius: 8,
+// // // // // //     borderBottomRightRadius: 8,
+// // // // // //   },
+// // // // // //   topTitle: { fontSize: 24, fontWeight: "800" },
+
+// // // // // //   cameraContainer: { flex: 1 },
+// // // // // //   camera: { flex: 1 },
+
+// // // // // //   permissionCenter: {
+// // // // // //     flex: 1,
+// // // // // //     alignItems: "center",
+// // // // // //     justifyContent: "center",
+// // // // // //     paddingHorizontal: 20,
+// // // // // //     gap: 16,
+// // // // // //   },
+// // // // // //   permissionButton: {
+// // // // // //     paddingHorizontal: 24,
+// // // // // //     paddingVertical: 16,
+// // // // // //     borderRadius: 16,
+// // // // // //     borderWidth: 1,
+// // // // // //     minWidth: 220,
+// // // // // //     alignItems: "center",
+// // // // // //     justifyContent: "center",
+// // // // // //   },
+
+// // // // // //   statusOverlay: {
+// // // // // //     position: "absolute",
+// // // // // //     top: 20,
+// // // // // //     left: 20,
+// // // // // //     right: 20,
+// // // // // //     flexDirection: "row",
+// // // // // //     alignItems: "center",
+// // // // // //     padding: 12,
+// // // // // //     borderRadius: 10,
+// // // // // //   },
+// // // // // //   statusDot: { width: 10, height: 10, borderRadius: 5, marginRight: 8 },
+// // // // // //   statusText: { fontSize: 14, flex: 1 },
+// // // // // //   refreshButton: { padding: 6 },
+// // // // // //   refreshText: { fontSize: 18 },
+
+// // // // // //   detectingIndicator: {
+// // // // // //     position: "absolute",
+// // // // // //     top: 70,
+// // // // // //     left: 20,
+// // // // // //     right: 20,
+// // // // // //     flexDirection: "row",
+// // // // // //     alignItems: "center",
+// // // // // //     justifyContent: "center",
+// // // // // //     padding: 10,
+// // // // // //     borderRadius: 8,
+// // // // // //   },
+// // // // // //   detectingIndicatorText: { fontSize: 14, marginLeft: 8, fontWeight: "600" },
+
+// // // // // //   resultContainer: {
+// // // // // //     position: "absolute",
+// // // // // //     top: "35%",
+// // // // // //     left: 30,
+// // // // // //     right: 30,
+// // // // // //     padding: 24,
+// // // // // //     borderRadius: 20,
+// // // // // //     alignItems: "center",
+// // // // // //     backgroundColor: "rgba(0,0,0,0.85)",
+// // // // // //   },
+// // // // // //   colorSwatch: {
+// // // // // //     width: 80,
+// // // // // //     height: 80,
+// // // // // //     borderRadius: 40,
+// // // // // //     marginBottom: 16,
+// // // // // //     borderWidth: 3,
+// // // // // //     borderColor: "#FFFFFF",
+// // // // // //   },
+// // // // // //   resultText: { fontSize: 28, textAlign: "center", fontWeight: "800", color: "#FFFFFF", marginBottom: 8 },
+// // // // // //   hexText: { fontSize: 16, textAlign: "center", fontWeight: "600", color: "#CCCCCC" },
+
+// // // // // //   toggleOverlay: {
+// // // // // //     position: "absolute",
+// // // // // //     bottom: 30,
+// // // // // //     left: 0,
+// // // // // //     right: 0,
+// // // // // //     alignItems: "center",
+// // // // // //   },
+// // // // // //   toggleButton: {
+// // // // // //     paddingVertical: 18,
+// // // // // //     paddingHorizontal: 44,
+// // // // // //     borderRadius: 30,
+// // // // // //     minWidth: 280,
+// // // // // //     alignItems: "center",
+// // // // // //     justifyContent: "center",
+// // // // // //   },
+
+// // // // // //   bottomBar: {
+// // // // // //     flexDirection: "row",
+// // // // // //     justifyContent: "space-between",
+// // // // // //     paddingHorizontal: 20,
+// // // // // //     paddingVertical: 12,
+// // // // // //   },
+// // // // // //   bottomButton: {
+// // // // // //     flex: 1,
+// // // // // //     height: 80,
+// // // // // //     borderRadius: 18,
+// // // // // //     marginHorizontal: 6,
+// // // // // //     alignItems: "center",
+// // // // // //     justifyContent: "center",
+// // // // // //   },
+// // // // // // });
+
 // // // // // import React, { useEffect, useMemo, useRef, useState } from "react";
-// // // // // import {
-// // // // //   ActivityIndicator,
-// // // // //   Alert,
-// // // // //   StyleSheet,
-// // // // //   TouchableOpacity,
-// // // // //   View,
-// // // // // } from "react-native";
+// // // // // import { ActivityIndicator, Alert, StyleSheet, TouchableOpacity, View } from "react-native";
 // // // // // import { useRouter } from "expo-router";
 // // // // // import { CameraView, useCameraPermissions } from "expo-camera";
 // // // // // import { useTranslation } from "react-i18next";
 
-// // // // // // import { detectColor, checkApiHealth } from "../services/detectionApi";
 // // // // // import { detectClothesWithColor, checkApiHealth } from "../services/detectionApi";
 // // // // // import { useAccessibility } from "@/contexts/AccessibilityContext";
 // // // // // import { useAccessibleColors } from "@/hooks/useAccessibleColors";
 // // // // // import { AccessibleText } from "@/components/AccessibleText";
 // // // // // import { AccessibleButton } from "@/components/AccessibleButton";
-
-// // // // // type ApiColorResult =
-// // // // //   | {
-// // // // //       success: true;
-// // // // //       data: { name: string; hex: string };
-// // // // //     }
-// // // // //   | {
-// // // // //       success: false;
-// // // // //       message?: string;
-// // // // //     };
 
 // // // // // const FALLBACK_COLORS = {
 // // // // //   background: "#000000",
@@ -44,7 +550,6 @@
 // // // // //   const { t, i18n } = useTranslation();
 // // // // //   const { speak, hapticFeedback } = useAccessibility();
 
-// // // // //   // ✅ Prevent crash if hook returns undefined temporarily
 // // // // //   const hookColors = useAccessibleColors();
 // // // // //   const colors = useMemo(() => hookColors ?? FALLBACK_COLORS, [hookColors]);
 
@@ -56,32 +561,23 @@
 // // // // //   const [isDetecting, setIsDetecting] = useState(false);
 // // // // //   const [isAutoDetecting, setIsAutoDetecting] = useState(false);
 
-// // // // //   const [detectedColor, setDetectedColor] = useState("");
+// // // // //   const [detectedLabel, setDetectedLabel] = useState(""); // e.g. "green shirt"
 // // // // //   const [colorHex, setColorHex] = useState("");
 
 // // // // //   const cameraRef = useRef<CameraView>(null);
 // // // // //   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 // // // // //   const lastSpokenRef = useRef<string>("");
 
-// // // // //   // ----------------------------
-// // // // //   // Announce screen + check API
-// // // // //   // ----------------------------
 // // // // //   useEffect(() => {
-// // // // //     // announce on language change too
 // // // // //     speak?.(t("color.announcement", "Color Identification mode."), true);
 // // // // //     void checkConnection();
 // // // // //     // eslint-disable-next-line react-hooks/exhaustive-deps
 // // // // //   }, [i18n.language]);
 
-// // // // //   // ----------------------------
-// // // // //   // Auto-detect loop
-// // // // //   // ----------------------------
 // // // // //   useEffect(() => {
 // // // // //     if (isAutoDetecting && apiConnected) {
 // // // // //       if (intervalRef.current) clearInterval(intervalRef.current);
-// // // // //       intervalRef.current = setInterval(() => {
-// // // // //         void captureColor();
-// // // // //       }, 2000);
+// // // // //       intervalRef.current = setInterval(() => void captureAndDetect(), 2000);
 // // // // //     } else {
 // // // // //       if (intervalRef.current) clearInterval(intervalRef.current);
 // // // // //       intervalRef.current = null;
@@ -94,46 +590,30 @@
 // // // // //     // eslint-disable-next-line react-hooks/exhaustive-deps
 // // // // //   }, [isAutoDetecting, apiConnected]);
 
-// // // // //   // ----------------------------
-// // // // //   // API health
-// // // // //   // ----------------------------
 // // // // //   const checkConnection = async () => {
 // // // // //     setCheckingApi(true);
 // // // // //     try {
 // // // // //       const ok = await checkApiHealth();
 // // // // //       setApiConnected(ok);
 
-// // // // //       if (!ok) {
-// // // // //         Alert.alert(
-// // // // //           t("common.apiErrorTitle", "API Not Connected"),
-// // // // //           t(
-// // // // //             "common.apiErrorBody",
-// // // // //             "Cannot connect to detection server. Make sure:\n1. FastAPI server is running\n2. Both devices are on same WiFi\n3. IP address is correct in detectionApi"
-// // // // //           )
-// // // // //         );
-// // // // //       }
-// // // // //     } catch (e) {
+// // // // //       // if (!ok) {
+// // // // //       //   Alert.alert(
+// // // // //       //     t("common.apiErrorTitle", "API Not Connected"),
+// // // // //       //     t(
+// // // // //       //       "common.apiErrorBody",
+// // // // //       //       "Cannot connect to detection server. Make sure:\n1. FastAPI server is running\n2. Both devices are on same WiFi\n3. IP address is correct in detectionApi"
+// // // // //       //     )
+// // // // //       //   );
+// // // // //       // }
+// // // // //     } catch {
 // // // // //       setApiConnected(false);
-// // // // //       Alert.alert(
-// // // // //         t("common.apiErrorTitle", "API Not Connected"),
-// // // // //         t(
-// // // // //           "common.apiErrorBody",
-// // // // //           "Cannot connect to detection server. Make sure the server is running and IP is correct."
-// // // // //         )
-// // // // //       );
 // // // // //     } finally {
 // // // // //       setCheckingApi(false);
 // // // // //     }
 // // // // //   };
 
-// // // // //   // ----------------------------
-// // // // //   // Capture & detect
-// // // // //   // ----------------------------
-// // // // //   const captureColor = async () => {
-// // // // //     if (!apiConnected) return;
-// // // // //     if (!permission?.granted) return;
-// // // // //     if (!cameraRef.current) return;
-// // // // //     if (isDetecting) return;
+// // // // //   const captureAndDetect = async () => {
+// // // // //     if (!apiConnected || !permission?.granted || !cameraRef.current || isDetecting) return;
 
 // // // // //     setIsDetecting(true);
 
@@ -147,60 +627,64 @@
 
 // // // // //       if (!photo?.uri) throw new Error("Failed to capture photo");
 
-// // // // //       // const result = (await detectColor(photo.uri)) as ApiColorResult;
-// // // // //       const result = await detectClothesWithColor(photo.uri, 0.35);
+// // // // //       const result: any = await detectClothesWithColor(photo.uri, 0.3);
 
-// // // // //       if (result?.success && result.data) {
-// // // // //         const name = (result.data.name ?? "").trim();
-// // // // //         const hex = (result.data.hex ?? "").trim();
+// // // // //       if (result?.success) {
+// // // // //         // Prefer backend-provided TTS label
+// // // // //         const msg = Array.isArray(result?.tts_messages) ? result.tts_messages[0] : "";
+// // // // //         const label = (msg || "").trim();
 
-// // // // //         if (!name) return;
+// // // // //         // Try fallback: build label from top detection
+// // // // //         const top = Array.isArray(result?.detections) ? result.detections[0] : null;
+// // // // //         const fallbackLabel =
+// // // // //           top?.color?.name && top?.class_name
+// // // // //             ? `${top.color.name} ${top.class_name}`
+// // // // //             : "";
 
-// // // // //         setDetectedColor(name);
-// // // // //         setColorHex(hex);
+// // // // //         const finalLabel = (label || fallbackLabel || "").trim();
 
-// // // // //         // Speak only when changed
-// // // // //         const spokenKey = `${name.toLowerCase()}|${hex.toLowerCase()}`;
-// // // // //         if (lastSpokenRef.current !== spokenKey) {
-// // // // //           lastSpokenRef.current = spokenKey;
-// // // // //           hapticFeedback?.("success");
-// // // // //           speak?.(t("color.detected", "Detected {{color}}", { color: name }), true);
+// // // // //         if (finalLabel) {
+// // // // //           setDetectedLabel(finalLabel);
+
+// // // // //           const hex = (top?.color?.hex || "").trim();
+// // // // //           setColorHex(hex);
+
+// // // // //           const key = finalLabel.toLowerCase();
+// // // // //           if (lastSpokenRef.current !== key) {
+// // // // //             lastSpokenRef.current = key;
+// // // // //             hapticFeedback?.("success");
+// // // // //             speak?.(finalLabel, true);
+// // // // //           }
+// // // // //           return;
 // // // // //         }
-// // // // //       } else {
-// // // // //         // If not success, don't spam alerts during auto mode
+
 // // // // //         if (!isAutoDetecting) {
-// // // // //           hapticFeedback?.("error");
-// // // // //           speak?.(t("color.failed", "Detection failed. Please try again."), true);
+// // // // //           hapticFeedback?.("warning");
+// // // // //           speak?.("No clothing detected", true);
 // // // // //         }
+// // // // //         return;
+// // // // //       }
+
+// // // // //       if (!isAutoDetecting) {
+// // // // //         hapticFeedback?.("error");
+// // // // //         speak?.(t("color.failed", "Detection failed. Please try again."), true);
 // // // // //       }
 // // // // //     } catch (err) {
 // // // // //       if (!isAutoDetecting) {
 // // // // //         hapticFeedback?.("error");
-// // // // //         speak?.(t("color.failed", "Detection failed. Please try again."), true);
-// // // // //         Alert.alert(
-// // // // //           t("common.error", "Error"),
-// // // // //           err instanceof Error ? err.message : "Unknown error"
-// // // // //         );
+// // // // //         Alert.alert(t("common.error", "Error"), err instanceof Error ? err.message : "Unknown error");
 // // // // //       }
 // // // // //     } finally {
 // // // // //       setIsDetecting(false);
 // // // // //     }
 // // // // //   };
 
-// // // // //   // ----------------------------
-// // // // //   // Toggle auto
-// // // // //   // ----------------------------
 // // // // //   const toggleAutoDetection = () => {
 // // // // //     if (!apiConnected) {
 // // // // //       hapticFeedback?.("error");
-// // // // //       speak?.(t("common.apiNotConnected", "API not connected."), true);
-// // // // //       Alert.alert(
-// // // // //         t("common.apiNotConnectedTitle", "Not connected"),
-// // // // //         t("common.apiNotConnectedBody", "API not connected. Please check connection.")
-// // // // //       );
+// // // // //       Alert.alert(t("common.apiNotConnectedTitle", "Not connected"), t("common.apiNotConnectedBody", "API not connected. Please check connection."));
 // // // // //       return;
 // // // // //     }
-
 // // // // //     if (!permission?.granted) {
 // // // // //       hapticFeedback?.("error");
 // // // // //       speak?.(t("common.cameraPermissionNeeded", "Camera permission is required."), true);
@@ -216,27 +700,19 @@
 // // // // //       speak?.(t("color.scanningStart", "Scanning started"), true);
 // // // // //     } else {
 // // // // //       speak?.(t("color.scanningStop", "Scanning stopped"), true);
-// // // // //       setDetectedColor("");
+// // // // //       setDetectedLabel("");
 // // // // //       setColorHex("");
 // // // // //       lastSpokenRef.current = "";
 // // // // //     }
 // // // // //   };
 
-// // // // //   // ----------------------------
-// // // // //   // Permission screens
-// // // // //   // ----------------------------
-// // // // //   if (!permission) {
-// // // // //     return <View style={[styles.root, { backgroundColor: colors.background }]} />;
-// // // // //   }
+// // // // //   if (!permission) return <View style={[styles.root, { backgroundColor: colors.background }]} />;
 
 // // // // //   if (!permission.granted) {
 // // // // //     return (
 // // // // //       <View style={[styles.root, { backgroundColor: colors.background }]}>
 // // // // //         <View style={[styles.topBar, { backgroundColor: colors.primary }]}>
-// // // // //           <AccessibleText
-// // // // //             style={[styles.topTitle, { color: colors.textInverse }]}
-// // // // //             level={1}
-// // // // //           >
+// // // // //           <AccessibleText style={[styles.topTitle, { color: colors.textInverse }]} level={1}>
 // // // // //             {t("color.title", "Color Identification")}
 // // // // //           </AccessibleText>
 // // // // //         </View>
@@ -249,11 +725,6 @@
 // // // // //           <AccessibleButton
 // // // // //             title={t("common.allowCamera", "Allow Camera")}
 // // // // //             onPress={requestPermission}
-// // // // //             accessibilityLabel={t("common.allowCamera", "Allow Camera")}
-// // // // //             accessibilityHint={t(
-// // // // //               "common.allowCameraHint",
-// // // // //               "Grants camera access to detect colors"
-// // // // //             )}
 // // // // //             style={[styles.permissionButton, { borderColor: colors.text }]}
 // // // // //           />
 
@@ -267,60 +738,38 @@
 // // // // //     );
 // // // // //   }
 
-// // // // //   // ----------------------------
-// // // // //   // Main UI
-// // // // //   // ----------------------------
 // // // // //   return (
 // // // // //     <View style={[styles.root, { backgroundColor: colors.background }]}>
-// // // // //       {/* Header */}
 // // // // //       <View style={[styles.topBar, { backgroundColor: colors.primary }]}>
-// // // // //         <AccessibleText
-// // // // //           style={[styles.topTitle, { color: colors.textInverse }]}
-// // // // //           level={1}
-// // // // //         >
+// // // // //         <AccessibleText style={[styles.topTitle, { color: colors.textInverse }]} level={1}>
 // // // // //           {t("color.title", "Color Identification")}
 // // // // //         </AccessibleText>
 // // // // //       </View>
 
-// // // // //       {/* Camera + overlays */}
 // // // // //       <View style={styles.cameraContainer}>
 // // // // //         <CameraView ref={cameraRef} style={styles.camera} facing="back" />
 
-// // // // //         {/* API status */}
 // // // // //         <View style={[styles.statusOverlay, { backgroundColor: colors.card }]}>
 // // // // //           <View
 // // // // //             style={[
 // // // // //               styles.statusDot,
 // // // // //               { backgroundColor: apiConnected ? colors.success : colors.danger },
 // // // // //             ]}
-// // // // //             accessible
-// // // // //             accessibilityLabel={`Connection status: ${
-// // // // //               apiConnected ? "Connected" : "Disconnected"
-// // // // //             }`}
+// // // // //             accessibilityLabel={`Connection status: ${apiConnected ? "Connected" : "Disconnected"}`}
 // // // // //           />
 // // // // //           <AccessibleText style={[styles.statusText, { color: colors.text }]}>
 // // // // //             {apiConnected ? t("common.connected", "Connected") : t("common.disconnected", "Disconnected")}
 // // // // //           </AccessibleText>
 
-// // // // //           <TouchableOpacity
-// // // // //             onPress={checkConnection}
-// // // // //             style={styles.refreshButton}
-// // // // //             accessible
-// // // // //             accessibilityRole="button"
-// // // // //             accessibilityLabel={t("common.refresh", "Refresh")}
-// // // // //             accessibilityHint={t("common.refreshHint", "Re-check API connection")}
-// // // // //           >
+// // // // //           <TouchableOpacity onPress={checkConnection} style={styles.refreshButton}>
 // // // // //             {checkingApi ? (
 // // // // //               <ActivityIndicator size="small" color={colors.text} />
 // // // // //             ) : (
-// // // // //               <AccessibleText style={[styles.refreshText, { color: colors.text }]}>
-// // // // //                 🔄
-// // // // //               </AccessibleText>
+// // // // //               <AccessibleText style={[styles.refreshText, { color: colors.text }]}>🔄</AccessibleText>
 // // // // //             )}
 // // // // //           </TouchableOpacity>
 // // // // //         </View>
 
-// // // // //         {/* Scanning indicator */}
 // // // // //         {isAutoDetecting && (
 // // // // //           <View style={[styles.detectingIndicator, { backgroundColor: colors.warning }]}>
 // // // // //             <ActivityIndicator size="small" color={colors.textInverse} />
@@ -330,32 +779,17 @@
 // // // // //           </View>
 // // // // //         )}
 
-// // // // //         {/* Result */}
-// // // // //         {detectedColor !== "" && (
+// // // // //         {detectedLabel !== "" && (
 // // // // //           <View style={styles.resultContainer}>
-// // // // //             <View
-// // // // //               style={[
-// // // // //                 styles.colorSwatch,
-// // // // //                 { backgroundColor: colorHex || "#000000" },
-// // // // //               ]}
-// // // // //               accessible
-// // // // //               accessibilityLabel={t("color.sample", "Color sample")}
-// // // // //             />
-// // // // //             <AccessibleText style={styles.resultText}>
-// // // // //               {detectedColor.toUpperCase()}
-// // // // //             </AccessibleText>
+// // // // //             <View style={[styles.colorSwatch, { backgroundColor: colorHex || "#000000" }]} />
+// // // // //             <AccessibleText style={styles.resultText}>{detectedLabel.toUpperCase()}</AccessibleText>
 // // // // //             {!!colorHex && <AccessibleText style={styles.hexText}>{colorHex}</AccessibleText>}
 // // // // //           </View>
 // // // // //         )}
 
-// // // // //         {/* Toggle */}
 // // // // //         <View style={styles.toggleOverlay}>
 // // // // //           <AccessibleButton
-// // // // //             title={
-// // // // //               isAutoDetecting
-// // // // //                 ? t("common.stopDetection", "Stop Detection")
-// // // // //                 : t("common.startDetection", "Start Detection")
-// // // // //             }
+// // // // //             title={isAutoDetecting ? t("common.stopDetection", "Stop Detection") : t("common.startDetection", "Start Detection")}
 // // // // //             onPress={toggleAutoDetection}
 // // // // //             disabled={!apiConnected}
 // // // // //             style={[
@@ -363,44 +797,22 @@
 // // // // //               isAutoDetecting && { backgroundColor: colors.danger },
 // // // // //               !apiConnected && { backgroundColor: colors.disabled },
 // // // // //             ]}
-// // // // //             accessibilityLabel={
-// // // // //               isAutoDetecting
-// // // // //                 ? t("common.stopDetection", "Stop Detection")
-// // // // //                 : t("common.startDetection", "Start Detection")
-// // // // //             }
-// // // // //             accessibilityHint={
-// // // // //               apiConnected
-// // // // //                 ? t("color.toggleHint", "Starts or stops automatic detection")
-// // // // //                 : t("common.apiNotConnectedBody", "API not connected. Please check connection.")
-// // // // //             }
 // // // // //           />
 // // // // //         </View>
 // // // // //       </View>
 
-// // // // //       {/* Bottom bar */}
 // // // // //       <View style={[styles.bottomBar, { backgroundColor: colors.background }]}>
 // // // // //         <AccessibleButton
 // // // // //           title={t("common.modes", "Modes")}
 // // // // //           onPress={() => {
 // // // // //             setIsAutoDetecting(false);
-// // // // //             hapticFeedback?.("light");
-// // // // //             speak?.(t("common.goingToModes", "Navigating to modes"), true);
 // // // // //             router.push("/features");
 // // // // //           }}
 // // // // //           style={styles.bottomButton}
 // // // // //         />
-
 // // // // //         <AccessibleButton
 // // // // //           title={i18n.language === "ur" ? "اردو" : "ENG"}
-// // // // //           onPress={() => {
-// // // // //             hapticFeedback?.("light");
-// // // // //             speak?.(
-// // // // //               i18n.language === "ur"
-// // // // //                 ? t("common.languageUrdu", "Language is Urdu")
-// // // // //                 : t("common.languageEnglish", "Language is English"),
-// // // // //               true
-// // // // //             );
-// // // // //           }}
+// // // // //           onPress={() => {}}
 // // // // //           style={styles.bottomButton}
 // // // // //         />
 // // // // //       </View>
@@ -521,7 +933,8 @@
 // // // // //   },
 // // // // // });
 
-// // // // import React, { useEffect, useMemo, useRef, useState } from "react";
+
+// // // // import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 // // // // import { ActivityIndicator, Alert, StyleSheet, TouchableOpacity, View } from "react-native";
 // // // // import { useRouter } from "expo-router";
 // // // // import { CameraView, useCameraPermissions } from "expo-camera";
@@ -557,65 +970,158 @@
 
 // // // //   const [apiConnected, setApiConnected] = useState(false);
 // // // //   const [checkingApi, setCheckingApi] = useState(false);
-
-// // // //   const [isDetecting, setIsDetecting] = useState(false);
 // // // //   const [isAutoDetecting, setIsAutoDetecting] = useState(false);
 
-// // // //   const [detectedLabel, setDetectedLabel] = useState(""); // e.g. "green shirt"
+// // // //   const [detectedLabel, setDetectedLabel] = useState("");
 // // // //   const [colorHex, setColorHex] = useState("");
 
 // // // //   const cameraRef = useRef<CameraView>(null);
-// // // //   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-// // // //   const lastSpokenRef = useRef<string>("");
+// // // //   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+// // // //   const isMountedRef = useRef(true);
+// // // //   const isDetectingRef = useRef(false);
+// // // //   const apiConnectedRef = useRef(false);
+// // // //   const isAutoDetectingRef = useRef(false);
+
+// // // //   const lastSpokenDetectionRef = useRef("");
+// // // //   const consecutiveFailuresRef = useRef(0);
+
+// // // //   const hasAnnouncedRef = useRef(false);
+// // // //   const lastAnnouncedLanguageRef = useRef<string | null>(null);
 
 // // // //   useEffect(() => {
-// // // //     speak?.(t("color.announcement", "Color Identification mode."), true);
-// // // //     void checkConnection();
-// // // //     // eslint-disable-next-line react-hooks/exhaustive-deps
-// // // //   }, [i18n.language]);
-
-// // // //   useEffect(() => {
-// // // //     if (isAutoDetecting && apiConnected) {
-// // // //       if (intervalRef.current) clearInterval(intervalRef.current);
-// // // //       intervalRef.current = setInterval(() => void captureAndDetect(), 2000);
-// // // //     } else {
-// // // //       if (intervalRef.current) clearInterval(intervalRef.current);
-// // // //       intervalRef.current = null;
-// // // //     }
+// // // //     isMountedRef.current = true;
 
 // // // //     return () => {
-// // // //       if (intervalRef.current) clearInterval(intervalRef.current);
-// // // //       intervalRef.current = null;
-// // // //     };
-// // // //     // eslint-disable-next-line react-hooks/exhaustive-deps
-// // // //   }, [isAutoDetecting, apiConnected]);
+// // // //       isMountedRef.current = false;
 
-// // // //   const checkConnection = async () => {
+// // // //       if (timeoutRef.current) {
+// // // //         clearTimeout(timeoutRef.current);
+// // // //         timeoutRef.current = null;
+// // // //       }
+
+// // // //       isDetectingRef.current = false;
+// // // //       isAutoDetectingRef.current = false;
+// // // //     };
+// // // //   }, []);
+
+// // // //   useEffect(() => {
+// // // //     apiConnectedRef.current = apiConnected;
+// // // //   }, [apiConnected]);
+
+// // // //   useEffect(() => {
+// // // //     isAutoDetectingRef.current = isAutoDetecting;
+// // // //   }, [isAutoDetecting]);
+
+// // // //   const clearDetectionLoop = useCallback(() => {
+// // // //     if (timeoutRef.current) {
+// // // //       clearTimeout(timeoutRef.current);
+// // // //       timeoutRef.current = null;
+// // // //     }
+// // // //   }, []);
+
+// // // //   const checkConnection = useCallback(async () => {
+// // // //     if (!isMountedRef.current) return;
+
 // // // //     setCheckingApi(true);
+
 // // // //     try {
 // // // //       const ok = await checkApiHealth();
+
+// // // //       if (!isMountedRef.current) return;
+
 // // // //       setApiConnected(ok);
+// // // //       apiConnectedRef.current = ok;
 
-// // // //       // if (!ok) {
-// // // //       //   Alert.alert(
-// // // //       //     t("common.apiErrorTitle", "API Not Connected"),
-// // // //       //     t(
-// // // //       //       "common.apiErrorBody",
-// // // //       //       "Cannot connect to detection server. Make sure:\n1. FastAPI server is running\n2. Both devices are on same WiFi\n3. IP address is correct in detectionApi"
-// // // //       //     )
-// // // //       //   );
-// // // //       // }
-// // // //     } catch {
+// // // //       if (!ok) {
+// // // //         setIsAutoDetecting(false);
+// // // //         isAutoDetectingRef.current = false;
+// // // //         clearDetectionLoop();
+// // // //       }
+// // // //     } catch (error) {
+// // // //       console.log("[ColorIdentification] API health check failed:", error);
+
+// // // //       if (!isMountedRef.current) return;
+
 // // // //       setApiConnected(false);
+// // // //       apiConnectedRef.current = false;
+// // // //       setIsAutoDetecting(false);
+// // // //       isAutoDetectingRef.current = false;
+// // // //       clearDetectionLoop();
 // // // //     } finally {
-// // // //       setCheckingApi(false);
+// // // //       if (isMountedRef.current) {
+// // // //         setCheckingApi(false);
+// // // //       }
 // // // //     }
-// // // //   };
+// // // //   }, [clearDetectionLoop]);
 
-// // // //   const captureAndDetect = async () => {
-// // // //     if (!apiConnected || !permission?.granted || !cameraRef.current || isDetecting) return;
+// // // //   useEffect(() => {
+// // // //     void checkConnection();
+// // // //   }, [checkConnection]);
 
-// // // //     setIsDetecting(true);
+// // // //   useEffect(() => {
+// // // //     const languageChanged = lastAnnouncedLanguageRef.current !== i18n.language;
+
+// // // //     if (!hasAnnouncedRef.current || languageChanged) {
+// // // //       hasAnnouncedRef.current = true;
+// // // //       lastAnnouncedLanguageRef.current = i18n.language;
+
+// // // //       speak?.(
+// // // //         t(
+// // // //           "color.announcement",
+// // // //           "Color identification screen. Use camera to identify clothing colors."
+// // // //         ),
+// // // //         true
+// // // //       );
+// // // //     }
+// // // //   }, [i18n.language]);
+
+// // // //   const speakDetectionResult = useCallback(
+// // // //     (label: string, hex: string) => {
+// // // //       setDetectedLabel(label);
+// // // //       setColorHex(hex);
+// // // //       consecutiveFailuresRef.current = 0;
+
+// // // //       const speechKey = `${label.toLowerCase()}|${hex.toLowerCase()}`;
+// // // //       if (lastSpokenDetectionRef.current !== speechKey) {
+// // // //         lastSpokenDetectionRef.current = speechKey;
+// // // //         hapticFeedback?.("success");
+// // // //         speak?.(label, true);
+// // // //       }
+// // // //     },
+// // // //     [hapticFeedback, speak]
+// // // //   );
+
+// // // //   const handleDetectionFailure = useCallback(
+// // // //     (error: unknown) => {
+// // // //       console.log("[ColorIdentification] Detection failed:", error);
+// // // //       consecutiveFailuresRef.current += 1;
+
+// // // //       if (!isAutoDetectingRef.current) {
+// // // //         hapticFeedback?.("error");
+// // // //         Alert.alert(
+// // // //           t("common.error", "Error"),
+// // // //           error instanceof Error ? error.message : "Detection failed"
+// // // //         );
+// // // //         return;
+// // // //       }
+
+// // // //       if (consecutiveFailuresRef.current >= 3) {
+// // // //         consecutiveFailuresRef.current = 0;
+// // // //         hapticFeedback?.("warning");
+// // // //         speak?.(t("common.serverBusy", "Detection temporarily unavailable"), true);
+// // // //       }
+// // // //     },
+// // // //     [hapticFeedback, speak, t]
+// // // //   );
+
+// // // //   const captureAndDetect = useCallback(async () => {
+// // // //     if (!apiConnectedRef.current) return;
+// // // //     if (!permission?.granted) return;
+// // // //     if (!cameraRef.current) return;
+// // // //     if (isDetectingRef.current) return;
+
+// // // //     isDetectingRef.current = true;
 
 // // // //     try {
 // // // //       const photo = await cameraRef.current.takePictureAsync({
@@ -625,88 +1131,152 @@
 // // // //         shutterSound: false,
 // // // //       });
 
-// // // //       if (!photo?.uri) throw new Error("Failed to capture photo");
+// // // //       if (!photo?.uri) {
+// // // //         throw new Error("Failed to capture photo");
+// // // //       }
 
 // // // //       const result: any = await detectClothesWithColor(photo.uri, 0.3);
 
-// // // //       if (result?.success) {
-// // // //         // Prefer backend-provided TTS label
-// // // //         const msg = Array.isArray(result?.tts_messages) ? result.tts_messages[0] : "";
-// // // //         const label = (msg || "").trim();
+// // // //       if (!isMountedRef.current) return;
 
-// // // //         // Try fallback: build label from top detection
-// // // //         const top = Array.isArray(result?.detections) ? result.detections[0] : null;
-// // // //         const fallbackLabel =
-// // // //           top?.color?.name && top?.class_name
-// // // //             ? `${top.color.name} ${top.class_name}`
-// // // //             : "";
+// // // //       if (!result?.success) {
+// // // //         throw new Error(result?.message || "Detection request failed");
+// // // //       }
 
-// // // //         const finalLabel = (label || fallbackLabel || "").trim();
+// // // //       const topDetection =
+// // // //         Array.isArray(result?.detections) && result.detections.length > 0
+// // // //           ? result.detections[0]
+// // // //           : null;
 
-// // // //         if (finalLabel) {
-// // // //           setDetectedLabel(finalLabel);
+// // // //       const ttsMessage = Array.isArray(result?.tts_messages)
+// // // //         ? String(result.tts_messages[0] ?? "").trim()
+// // // //         : "";
 
-// // // //           const hex = (top?.color?.hex || "").trim();
-// // // //           setColorHex(hex);
+// // // //       const fallbackLabel =
+// // // //         topDetection?.color?.name && topDetection?.class_name
+// // // //           ? `${topDetection.color.name} ${topDetection.class_name}`.trim()
+// // // //           : "";
 
-// // // //           const key = finalLabel.toLowerCase();
-// // // //           if (lastSpokenRef.current !== key) {
-// // // //             lastSpokenRef.current = key;
-// // // //             hapticFeedback?.("success");
-// // // //             speak?.(finalLabel, true);
-// // // //           }
-// // // //           return;
-// // // //         }
+// // // //       // const finalLabel = (ttsMessage || fallbackLabel).trim();
+      
+      
 
-// // // //         if (!isAutoDetecting) {
-// // // //           hapticFeedback?.("warning");
-// // // //           speak?.("No clothing detected", true);
-// // // //         }
+// // // //     // // Extract ONLY color (first word)
+// // // //     //   const finalLabel = rawLabel.split(" ")[0];  
+// // // //     const rawLabel = (ttsMessage || fallbackLabel).trim();
+
+// // // //     const finalLabel =
+// // // //       rawLabel.startsWith("off white ")
+// // // //         ? "off white"
+// // // //         : rawLabel.split(" ")[0];
+// // // //       const hex = String(topDetection?.color?.hex ?? "").trim();
+
+// // // //       if (finalLabel) {
+// // // //         speakDetectionResult(finalLabel, hex);
 // // // //         return;
 // // // //       }
 
-// // // //       if (!isAutoDetecting) {
-// // // //         hapticFeedback?.("error");
-// // // //         speak?.(t("color.failed", "Detection failed. Please try again."), true);
-// // // //       }
-// // // //     } catch (err) {
-// // // //       if (!isAutoDetecting) {
-// // // //         hapticFeedback?.("error");
-// // // //         Alert.alert(t("common.error", "Error"), err instanceof Error ? err.message : "Unknown error");
-// // // //       }
-// // // //     } finally {
-// // // //       setIsDetecting(false);
-// // // //     }
-// // // //   };
+// // // //       consecutiveFailuresRef.current = 0;
 
-// // // //   const toggleAutoDetection = () => {
-// // // //     if (!apiConnected) {
-// // // //       hapticFeedback?.("error");
-// // // //       Alert.alert(t("common.apiNotConnectedTitle", "Not connected"), t("common.apiNotConnectedBody", "API not connected. Please check connection."));
+// // // //       if (!isAutoDetectingRef.current) {
+// // // //         hapticFeedback?.("warning");
+// // // //         speak?.(t("color.noClothingDetected", "No clothing detected"), true);
+// // // //       }
+// // // //     } catch (error) {
+// // // //       handleDetectionFailure(error);
+// // // //     } finally {
+// // // //       isDetectingRef.current = false;
+// // // //     }
+// // // //   }, [handleDetectionFailure, permission?.granted, speakDetectionResult, hapticFeedback, speak, t]);
+
+// // // //   useEffect(() => {
+// // // //     clearDetectionLoop();
+
+// // // //     if (!isAutoDetecting || !apiConnected) {
 // // // //       return;
 // // // //     }
+
+// // // //     let cancelled = false;
+
+// // // //     const runLoop = async () => {
+// // // //       if (cancelled) return;
+// // // //       if (!isMountedRef.current) return;
+// // // //       if (!isAutoDetectingRef.current) return;
+// // // //       if (!apiConnectedRef.current) return;
+
+// // // //       await captureAndDetect();
+
+// // // //       if (cancelled) return;
+// // // //       if (!isMountedRef.current) return;
+// // // //       if (!isAutoDetectingRef.current) return;
+// // // //       if (!apiConnectedRef.current) return;
+
+// // // //       timeoutRef.current = setTimeout(runLoop, 2000);
+// // // //     };
+
+// // // //     void runLoop();
+
+// // // //     return () => {
+// // // //       cancelled = true;
+// // // //       clearDetectionLoop();
+// // // //     };
+// // // //   }, [apiConnected, isAutoDetecting, captureAndDetect, clearDetectionLoop]);
+
+// // // //   const toggleAutoDetection = useCallback(() => {
+// // // //     if (!apiConnected) {
+// // // //       hapticFeedback?.("error");
+// // // //       Alert.alert(
+// // // //         t("common.apiNotConnectedTitle", "Not connected"),
+// // // //         t("common.apiNotConnectedBody", "API not connected. Please check connection.")
+// // // //       );
+// // // //       return;
+// // // //     }
+
 // // // //     if (!permission?.granted) {
 // // // //       hapticFeedback?.("error");
 // // // //       speak?.(t("common.cameraPermissionNeeded", "Camera permission is required."), true);
 // // // //       return;
 // // // //     }
 
-// // // //     const next = !isAutoDetecting;
-// // // //     setIsAutoDetecting(next);
+// // // //     const nextValue = !isAutoDetecting;
+
+// // // //     setIsAutoDetecting(nextValue);
+// // // //     isAutoDetectingRef.current = nextValue;
 // // // //     hapticFeedback?.("medium");
 
-// // // //     if (next) {
-// // // //       lastSpokenRef.current = "";
-// // // //       speak?.(t("color.scanningStart", "Scanning started"), true);
+// // // //     if (nextValue) {
+// // // //       consecutiveFailuresRef.current = 0;
+// // // //       lastSpokenDetectionRef.current = "";
+// // // //       speak?.(t("color.scanningStart", "Color scanning started"), true);
 // // // //     } else {
-// // // //       speak?.(t("color.scanningStop", "Scanning stopped"), true);
+// // // //       clearDetectionLoop();
+// // // //       consecutiveFailuresRef.current = 0;
+// // // //       lastSpokenDetectionRef.current = "";
 // // // //       setDetectedLabel("");
 // // // //       setColorHex("");
-// // // //       lastSpokenRef.current = "";
+// // // //       speak?.(t("color.scanningStop", "Color scanning stopped"), true);
 // // // //     }
-// // // //   };
+// // // //   }, [
+// // // //     apiConnected,
+// // // //     clearDetectionLoop,
+// // // //     hapticFeedback,
+// // // //     isAutoDetecting,
+// // // //     permission?.granted,
+// // // //     speak,
+// // // //     t,
+// // // //   ]);
 
-// // // //   if (!permission) return <View style={[styles.root, { backgroundColor: colors.background }]} />;
+// // // //   const goToModes = useCallback(() => {
+// // // //     clearDetectionLoop();
+// // // //     setIsAutoDetecting(false);
+// // // //     isAutoDetectingRef.current = false;
+// // // //     consecutiveFailuresRef.current = 0;
+// // // //     router.push("/features");
+// // // //   }, [clearDetectionLoop, router]);
+
+// // // //   if (!permission) {
+// // // //     return <View style={[styles.root, { backgroundColor: colors.background }]} />;
+// // // //   }
 
 // // // //   if (!permission.granted) {
 // // // //     return (
@@ -730,7 +1300,7 @@
 
 // // // //           <AccessibleButton
 // // // //             title={t("common.modes", "Modes")}
-// // // //             onPress={() => router.push("/features")}
+// // // //             onPress={goToModes}
 // // // //             style={styles.permissionButton}
 // // // //           />
 // // // //         </View>
@@ -755,10 +1325,13 @@
 // // // //               styles.statusDot,
 // // // //               { backgroundColor: apiConnected ? colors.success : colors.danger },
 // // // //             ]}
+// // // //             accessible
 // // // //             accessibilityLabel={`Connection status: ${apiConnected ? "Connected" : "Disconnected"}`}
 // // // //           />
 // // // //           <AccessibleText style={[styles.statusText, { color: colors.text }]}>
-// // // //             {apiConnected ? t("common.connected", "Connected") : t("common.disconnected", "Disconnected")}
+// // // //             {apiConnected
+// // // //               ? t("common.connected", "Connected")
+// // // //               : t("common.disconnected", "Disconnected")}
 // // // //           </AccessibleText>
 
 // // // //           <TouchableOpacity onPress={checkConnection} style={styles.refreshButton}>
@@ -789,7 +1362,11 @@
 
 // // // //         <View style={styles.toggleOverlay}>
 // // // //           <AccessibleButton
-// // // //             title={isAutoDetecting ? t("common.stopDetection", "Stop Detection") : t("common.startDetection", "Start Detection")}
+// // // //             title={
+// // // //               isAutoDetecting
+// // // //                 ? t("common.stopDetection", "Stop Detection")
+// // // //                 : t("common.startDetection", "Start Detection")
+// // // //             }
 // // // //             onPress={toggleAutoDetection}
 // // // //             disabled={!apiConnected}
 // // // //             style={[
@@ -804,12 +1381,10 @@
 // // // //       <View style={[styles.bottomBar, { backgroundColor: colors.background }]}>
 // // // //         <AccessibleButton
 // // // //           title={t("common.modes", "Modes")}
-// // // //           onPress={() => {
-// // // //             setIsAutoDetecting(false);
-// // // //             router.push("/features");
-// // // //           }}
+// // // //           onPress={goToModes}
 // // // //           style={styles.bottomButton}
 // // // //         />
+
 // // // //         <AccessibleButton
 // // // //           title={i18n.language === "ur" ? "اردو" : "ENG"}
 // // // //           onPress={() => {}}
@@ -862,7 +1437,12 @@
 // // // //     padding: 12,
 // // // //     borderRadius: 10,
 // // // //   },
-// // // //   statusDot: { width: 10, height: 10, borderRadius: 5, marginRight: 8 },
+// // // //   statusDot: {
+// // // //     width: 10,
+// // // //     height: 10,
+// // // //     borderRadius: 5,
+// // // //     marginRight: 8,
+// // // //   },
 // // // //   statusText: { fontSize: 14, flex: 1 },
 // // // //   refreshButton: { padding: 6 },
 // // // //   refreshText: { fontSize: 18 },
@@ -878,7 +1458,11 @@
 // // // //     padding: 10,
 // // // //     borderRadius: 8,
 // // // //   },
-// // // //   detectingIndicatorText: { fontSize: 14, marginLeft: 8, fontWeight: "600" },
+// // // //   detectingIndicatorText: {
+// // // //     fontSize: 14,
+// // // //     marginLeft: 8,
+// // // //     fontWeight: "600",
+// // // //   },
 
 // // // //   resultContainer: {
 // // // //     position: "absolute",
@@ -898,8 +1482,19 @@
 // // // //     borderWidth: 3,
 // // // //     borderColor: "#FFFFFF",
 // // // //   },
-// // // //   resultText: { fontSize: 28, textAlign: "center", fontWeight: "800", color: "#FFFFFF", marginBottom: 8 },
-// // // //   hexText: { fontSize: 16, textAlign: "center", fontWeight: "600", color: "#CCCCCC" },
+// // // //   resultText: {
+// // // //     fontSize: 28,
+// // // //     textAlign: "center",
+// // // //     fontWeight: "800",
+// // // //     color: "#FFFFFF",
+// // // //     marginBottom: 8,
+// // // //   },
+// // // //   hexText: {
+// // // //     fontSize: 16,
+// // // //     textAlign: "center",
+// // // //     fontWeight: "600",
+// // // //     color: "#CCCCCC",
+// // // //   },
 
 // // // //   toggleOverlay: {
 // // // //     position: "absolute",
@@ -932,7 +1527,6 @@
 // // // //     justifyContent: "center",
 // // // //   },
 // // // // });
-
 
 // // // import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 // // // import { ActivityIndicator, Alert, StyleSheet, TouchableOpacity, View } from "react-native";
@@ -1074,7 +1668,7 @@
 // // //         true
 // // //       );
 // // //     }
-// // //   }, [i18n.language]);
+// // //   }, [i18n.language, speak, t]);
 
 // // //   const speakDetectionResult = useCallback(
 // // //     (label: string, hex: string) => {
@@ -1148,28 +1742,22 @@
 // // //           ? result.detections[0]
 // // //           : null;
 
-// // //       const ttsMessage = Array.isArray(result?.tts_messages)
-// // //         ? String(result.tts_messages[0] ?? "").trim()
-// // //         : "";
+// // //       const colorData = topDetection?.color;
 
-// // //       const fallbackLabel =
-// // //         topDetection?.color?.name && topDetection?.class_name
-// // //           ? `${topDetection.color.name} ${topDetection.class_name}`.trim()
+// // //       const finalLabel =
+// // //         typeof colorData === "object" && colorData !== null
+// // //           ? String(colorData.name ?? "").trim()
 // // //           : "";
 
-// // //       // const finalLabel = (ttsMessage || fallbackLabel).trim();
-      
-      
+// // //       const hex =
+// // //         typeof colorData === "object" && colorData !== null
+// // //           ? String(colorData.hex ?? "").trim()
+// // //           : "";
 
-// // //     // // Extract ONLY color (first word)
-// // //     //   const finalLabel = rawLabel.split(" ")[0];  
-// // //     const rawLabel = (ttsMessage || fallbackLabel).trim();
-
-// // //     const finalLabel =
-// // //       rawLabel.startsWith("off white ")
-// // //         ? "off white"
-// // //         : rawLabel.split(" ")[0];
-// // //       const hex = String(topDetection?.color?.hex ?? "").trim();
+// // //       console.log("[ColorIdentification] FULL RESULT:", JSON.stringify(result, null, 2));
+// // //       console.log("[ColorIdentification] TOP DETECTION:", topDetection);
+// // //       console.log("[ColorIdentification] FINAL LABEL:", finalLabel);
+// // //       console.log("[ColorIdentification] HEX:", hex);
 
 // // //       if (finalLabel) {
 // // //         speakDetectionResult(finalLabel, hex);
@@ -1528,6 +2116,7 @@
 // // //   },
 // // // });
 
+
 // // import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 // // import { ActivityIndicator, Alert, StyleSheet, TouchableOpacity, View } from "react-native";
 // // import { useRouter } from "expo-router";
@@ -1756,6 +2345,7 @@
 
 // //       console.log("[ColorIdentification] FULL RESULT:", JSON.stringify(result, null, 2));
 // //       console.log("[ColorIdentification] TOP DETECTION:", topDetection);
+// //       console.log("[ColorIdentification] COLOR DATA:", colorData);
 // //       console.log("[ColorIdentification] FINAL LABEL:", finalLabel);
 // //       console.log("[ColorIdentification] HEX:", hex);
 
@@ -2116,7 +2706,6 @@
 // //   },
 // // });
 
-
 // import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 // import { ActivityIndicator, Alert, StyleSheet, TouchableOpacity, View } from "react-native";
 // import { useRouter } from "expo-router";
@@ -2144,7 +2733,7 @@
 // export default function ColorIdentificationScreen() {
 //   const router = useRouter();
 //   const { t, i18n } = useTranslation();
-//   const { speak, hapticFeedback } = useAccessibility();
+//   const { speak, stopSpeaking, hapticFeedback } = useAccessibility();
 
 //   const hookColors = useAccessibleColors();
 //   const colors = useMemo(() => hookColors ?? FALLBACK_COLORS, [hookColors]);
@@ -2165,6 +2754,7 @@
 //   const isDetectingRef = useRef(false);
 //   const apiConnectedRef = useRef(false);
 //   const isAutoDetectingRef = useRef(false);
+//   const hasAutoStartedRef = useRef(false);
 
 //   const lastSpokenDetectionRef = useRef("");
 //   const consecutiveFailuresRef = useRef(0);
@@ -2219,6 +2809,7 @@
 //       if (!ok) {
 //         setIsAutoDetecting(false);
 //         isAutoDetectingRef.current = false;
+//         hasAutoStartedRef.current = false;
 //         clearDetectionLoop();
 //       }
 //     } catch (error) {
@@ -2230,6 +2821,7 @@
 //       apiConnectedRef.current = false;
 //       setIsAutoDetecting(false);
 //       isAutoDetectingRef.current = false;
+//       hasAutoStartedRef.current = false;
 //       clearDetectionLoop();
 //     } finally {
 //       if (isMountedRef.current) {
@@ -2249,6 +2841,7 @@
 //       hasAnnouncedRef.current = true;
 //       lastAnnouncedLanguageRef.current = i18n.language;
 
+//       stopSpeaking?.();
 //       speak?.(
 //         t(
 //           "color.announcement",
@@ -2257,7 +2850,21 @@
 //         true
 //       );
 //     }
-//   }, [i18n.language, speak, t]);
+//   }, [i18n.language, speak, stopSpeaking, t]);
+
+//   useEffect(() => {
+//     if (!apiConnected) return;
+//     if (!permission?.granted) return;
+//     if (hasAutoStartedRef.current) return;
+
+//     hasAutoStartedRef.current = true;
+//     setIsAutoDetecting(true);
+//     isAutoDetectingRef.current = true;
+//     consecutiveFailuresRef.current = 0;
+//     lastSpokenDetectionRef.current = "";
+
+//     hapticFeedback?.("medium");
+//   }, [apiConnected, permission?.granted, hapticFeedback]);
 
 //   const speakDetectionResult = useCallback(
 //     (label: string, hex: string) => {
@@ -2355,17 +2962,12 @@
 //       }
 
 //       consecutiveFailuresRef.current = 0;
-
-//       if (!isAutoDetectingRef.current) {
-//         hapticFeedback?.("warning");
-//         speak?.(t("color.noClothingDetected", "No clothing detected"), true);
-//       }
 //     } catch (error) {
 //       handleDetectionFailure(error);
 //     } finally {
 //       isDetectingRef.current = false;
 //     }
-//   }, [handleDetectionFailure, permission?.granted, speakDetectionResult, hapticFeedback, speak, t]);
+//   }, [handleDetectionFailure, permission?.granted, speakDetectionResult]);
 
 //   useEffect(() => {
 //     clearDetectionLoop();
@@ -2400,55 +3002,15 @@
 //     };
 //   }, [apiConnected, isAutoDetecting, captureAndDetect, clearDetectionLoop]);
 
-//   const toggleAutoDetection = useCallback(() => {
-//     if (!apiConnected) {
-//       hapticFeedback?.("error");
-//       Alert.alert(
-//         t("common.apiNotConnectedTitle", "Not connected"),
-//         t("common.apiNotConnectedBody", "API not connected. Please check connection.")
-//       );
-//       return;
-//     }
-
-//     if (!permission?.granted) {
-//       hapticFeedback?.("error");
-//       speak?.(t("common.cameraPermissionNeeded", "Camera permission is required."), true);
-//       return;
-//     }
-
-//     const nextValue = !isAutoDetecting;
-
-//     setIsAutoDetecting(nextValue);
-//     isAutoDetectingRef.current = nextValue;
-//     hapticFeedback?.("medium");
-
-//     if (nextValue) {
-//       consecutiveFailuresRef.current = 0;
-//       lastSpokenDetectionRef.current = "";
-//       speak?.(t("color.scanningStart", "Color scanning started"), true);
-//     } else {
-//       clearDetectionLoop();
-//       consecutiveFailuresRef.current = 0;
-//       lastSpokenDetectionRef.current = "";
-//       setDetectedLabel("");
-//       setColorHex("");
-//       speak?.(t("color.scanningStop", "Color scanning stopped"), true);
-//     }
-//   }, [
-//     apiConnected,
-//     clearDetectionLoop,
-//     hapticFeedback,
-//     isAutoDetecting,
-//     permission?.granted,
-//     speak,
-//     t,
-//   ]);
-
 //   const goToModes = useCallback(() => {
 //     clearDetectionLoop();
 //     setIsAutoDetecting(false);
 //     isAutoDetectingRef.current = false;
+//     hasAutoStartedRef.current = false;
 //     consecutiveFailuresRef.current = 0;
+//     lastSpokenDetectionRef.current = "";
+//     setDetectedLabel("");
+//     setColorHex("");
 //     router.push("/features");
 //   }, [clearDetectionLoop, router]);
 
@@ -2537,23 +3099,6 @@
 //             {!!colorHex && <AccessibleText style={styles.hexText}>{colorHex}</AccessibleText>}
 //           </View>
 //         )}
-
-//         <View style={styles.toggleOverlay}>
-//           <AccessibleButton
-//             title={
-//               isAutoDetecting
-//                 ? t("common.stopDetection", "Stop Detection")
-//                 : t("common.startDetection", "Start Detection")
-//             }
-//             onPress={toggleAutoDetection}
-//             disabled={!apiConnected}
-//             style={[
-//               styles.toggleButton,
-//               isAutoDetecting && { backgroundColor: colors.danger },
-//               !apiConnected && { backgroundColor: colors.disabled },
-//             ]}
-//           />
-//         </View>
 //       </View>
 
 //       <View style={[styles.bottomBar, { backgroundColor: colors.background }]}>
@@ -2674,22 +3219,6 @@
 //     color: "#CCCCCC",
 //   },
 
-//   toggleOverlay: {
-//     position: "absolute",
-//     bottom: 30,
-//     left: 0,
-//     right: 0,
-//     alignItems: "center",
-//   },
-//   toggleButton: {
-//     paddingVertical: 18,
-//     paddingHorizontal: 44,
-//     borderRadius: 30,
-//     minWidth: 280,
-//     alignItems: "center",
-//     justifyContent: "center",
-//   },
-
 //   bottomBar: {
 //     flexDirection: "row",
 //     justifyContent: "space-between",
@@ -2746,6 +3275,7 @@ export default function ColorIdentificationScreen() {
 
   const [detectedLabel, setDetectedLabel] = useState("");
   const [colorHex, setColorHex] = useState("");
+  const [detectedColors, setDetectedColors] = useState<string[]>([]);
 
   const cameraRef = useRef<CameraView>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2867,12 +3397,16 @@ export default function ColorIdentificationScreen() {
   }, [apiConnected, permission?.granted, hapticFeedback]);
 
   const speakDetectionResult = useCallback(
-    (label: string, hex: string) => {
+    (colorsList: string[], primaryHex: string) => {
+      const cleanColors = colorsList.filter(Boolean);
+      const label = cleanColors.join(", ");
+
+      setDetectedColors(cleanColors);
       setDetectedLabel(label);
-      setColorHex(hex);
+      setColorHex(primaryHex);
       consecutiveFailuresRef.current = 0;
 
-      const speechKey = `${label.toLowerCase()}|${hex.toLowerCase()}`;
+      const speechKey = `${label.toLowerCase()}|${primaryHex.toLowerCase()}`;
       if (lastSpokenDetectionRef.current !== speechKey) {
         lastSpokenDetectionRef.current = speechKey;
         hapticFeedback?.("success");
@@ -2940,12 +3474,17 @@ export default function ColorIdentificationScreen() {
 
       const colorData = topDetection?.color;
 
-      const finalLabel =
-        typeof colorData === "object" && colorData !== null
-          ? String(colorData.name ?? "").trim()
-          : "";
+      const visibleColors =
+        typeof colorData === "object" && colorData !== null && Array.isArray(colorData.visible_colors)
+          ? colorData.visible_colors
+          : [];
 
-      const hex =
+      const colorNames = visibleColors
+        .map((c: any) => String(c?.name ?? "").trim())
+        .filter(Boolean)
+        .slice(0, 5);
+
+      const primaryHex =
         typeof colorData === "object" && colorData !== null
           ? String(colorData.hex ?? "").trim()
           : "";
@@ -2953,11 +3492,11 @@ export default function ColorIdentificationScreen() {
       console.log("[ColorIdentification] FULL RESULT:", JSON.stringify(result, null, 2));
       console.log("[ColorIdentification] TOP DETECTION:", topDetection);
       console.log("[ColorIdentification] COLOR DATA:", colorData);
-      console.log("[ColorIdentification] FINAL LABEL:", finalLabel);
-      console.log("[ColorIdentification] HEX:", hex);
+      console.log("[ColorIdentification] VISIBLE COLORS:", visibleColors);
+      console.log("[ColorIdentification] COLOR NAMES:", colorNames);
 
-      if (finalLabel) {
-        speakDetectionResult(finalLabel, hex);
+      if (colorNames.length > 0) {
+        speakDetectionResult(colorNames, primaryHex);
         return;
       }
 
@@ -3011,6 +3550,7 @@ export default function ColorIdentificationScreen() {
     lastSpokenDetectionRef.current = "";
     setDetectedLabel("");
     setColorHex("");
+    setDetectedColors([]);
     router.push("/features");
   }, [clearDetectionLoop, router]);
 
@@ -3097,6 +3637,16 @@ export default function ColorIdentificationScreen() {
             <View style={[styles.colorSwatch, { backgroundColor: colorHex || "#000000" }]} />
             <AccessibleText style={styles.resultText}>{detectedLabel.toUpperCase()}</AccessibleText>
             {!!colorHex && <AccessibleText style={styles.hexText}>{colorHex}</AccessibleText>}
+
+            {detectedColors.length > 0 && (
+              <View style={{ marginTop: 12 }}>
+                {detectedColors.map((color, index) => (
+                  <AccessibleText key={`${color}-${index}`} style={styles.hexText}>
+                    {index + 1}. {color}
+                  </AccessibleText>
+                ))}
+              </View>
+            )}
           </View>
         )}
       </View>

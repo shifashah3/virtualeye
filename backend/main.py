@@ -4013,6 +4013,205 @@ async def detect_objects_annotated(file: UploadFile = File(...), confidence: flo
 # ================================================================
 # MODE 5: Clothes + Color using TFLite
 # ================================================================
+# @app.post("/detect-objects-with-color")
+# async def detect_objects_with_color(file: UploadFile = File(...), confidence: float = 0.25):
+#     try:
+#         image_bytes = await file.read()
+#         if not image_bytes:
+#             raise HTTPException(status_code=400, detail="Empty file")
+
+#         nparr = np.frombuffer(image_bytes, dtype=np.uint8)
+#         image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+#         if image is None:
+#             raise HTTPException(status_code=400, detail="Invalid image")
+
+#         h, w = image.shape[:2]
+
+#         def _normalize_clothes_label(label: str) -> str:
+#             normalized = str(label or "").strip().lower().replace("_", " ")
+#             label_map = {
+#                 "trouser": "shalwar",
+#                 "trousers": "shalwar",
+#                 "pants": "shalwar",
+#                 "pant": "shalwar",
+#                 "scarf": "dupatta",
+#             }
+#             return label_map.get(normalized, normalized)
+
+#         def _bbox_iou(a: dict, b: dict) -> float:
+#             ax1, ay1, ax2, ay2 = a["bbox"]["x1"], a["bbox"]["y1"], a["bbox"]["x2"], a["bbox"]["y2"]
+#             bx1, by1, bx2, by2 = b["bbox"]["x1"], b["bbox"]["y1"], b["bbox"]["x2"], b["bbox"]["y2"]
+#             inter_x1 = max(ax1, bx1)
+#             inter_y1 = max(ay1, by1)
+#             inter_x2 = min(ax2, bx2)
+#             inter_y2 = min(ay2, by2)
+#             iw = max(0, inter_x2 - inter_x1)
+#             ih = max(0, inter_y2 - inter_y1)
+#             inter = iw * ih
+#             area_a = max(0, ax2 - ax1) * max(0, ay2 - ay1)
+#             area_b = max(0, bx2 - bx1) * max(0, by2 - by1)
+#             union = area_a + area_b - inter
+#             return (inter / union) if union > 0 else 0.0
+
+#         def _dedupe_same_class(items: list, iou_threshold: float = 0.75) -> list:
+#             kept = []
+#             for det in sorted(items, key=lambda d: d["confidence"], reverse=True):
+#                 duplicate = False
+#                 for prev in kept:
+#                     if prev["class_name"] == det["class_name"] and _bbox_iou(prev, det) > iou_threshold:
+#                         duplicate = True
+#                         break
+#                 if not duplicate:
+#                     kept.append(det)
+#             return kept
+
+#         def _apply_dupatta_shalwar_rules(items: list, image_h: int) -> list:
+#             if image_h <= 0:
+#                 return items
+
+#             dupatta = [d for d in items if d["class_name"] == "dupatta"]
+#             shalwar = [d for d in items if d["class_name"] == "shalwar"]
+
+#             if dupatta and shalwar:
+#                 top_dupatta = max(dupatta, key=lambda d: d["confidence"])
+#                 top_shalwar = max(shalwar, key=lambda d: d["confidence"])
+#                 if top_dupatta["_y_center"] > top_shalwar["_y_center"]:
+#                     top_dupatta["class_name"], top_shalwar["class_name"] = top_shalwar["class_name"], top_dupatta["class_name"]
+#                     top_dupatta["class_id"], top_shalwar["class_id"] = top_shalwar["class_id"], top_dupatta["class_id"]
+
+#             for d in items:
+#                 y_ratio = d["_y_center"] / image_h
+#                 box_w = d["bbox"]["x2"] - d["bbox"]["x1"]
+#                 box_h = d["bbox"]["y2"] - d["bbox"]["y1"]
+#                 aspect = (box_w / box_h) if box_h > 0 else 0.0
+#                 if d["class_name"] == "dupatta" and y_ratio > 0.68 and aspect < 1.2 and d["confidence"] < 0.72:
+#                     d["class_name"] = "shalwar"
+#                 elif d["class_name"] == "shalwar" and y_ratio < 0.52 and aspect > 1.25 and d["confidence"] < 0.72:
+#                     d["class_name"] = "dupatta"
+
+#             return items
+
+#         def _inner_crop_coords(x1: int, y1: int, x2: int, y2: int, pad_ratio: float = 0.12):
+#             bw = x2 - x1
+#             bh = y2 - y1
+#             padx = int(bw * pad_ratio)
+#             pady = int(bh * pad_ratio)
+#             cx1 = min(max(0, x1 + padx), w - 1)
+#             cy1 = min(max(0, y1 + pady), h - 1)
+#             cx2 = min(max(0, x2 - padx), w - 1)
+#             cy2 = min(max(0, y2 - pady), h - 1)
+#             if cx2 <= cx1 or cy2 <= cy1:
+#                 return x1, y1, x2, y2
+#             return cx1, cy1, cx2, cy2
+
+#         clothes_model = _get_clothes_detector()
+#         effective_conf = max(float(confidence), 0.3)
+
+#         interpreter = clothes_model["interpreter"]
+#         input_details = clothes_model["input_details"]
+#         output_details = clothes_model["output_details"]
+#         input_shape = clothes_model["input_shape"]
+#         input_dtype = clothes_model["input_dtype"]
+
+#         #input_tensor, scale_x, scale_y = _preprocess_clothes_image(image, input_shape, input_dtype)
+#         input_tensor = _preprocess_clothes_image(image, input_shape, input_dtype)
+        
+#         interpreter.set_tensor(input_details[0]["index"], input_tensor)
+#         interpreter.invoke()
+
+#         output = interpreter.get_tensor(output_details[0]["index"])
+
+#         print("input shape:", input_shape)
+#         print("input dtype:", input_dtype)
+#         print("output shape:", output.shape)
+#         print("output dtype:", output.dtype)
+#         print("first 20 values:", output.flatten()[:20])
+
+#         # raw_detections = _parse_tflite_output(
+#         #     output=output,
+#         #     class_names=CLOTHES_CLASS_NAMES,
+#         #     conf_threshold=effective_conf,
+#         #     scale_x=scale_x,
+#         #     scale_y=scale_y,
+#         # )
+#         raw_detections = _parse_tflite_output(
+#             output=output,
+#             class_names=CLOTHES_CLASS_NAMES,
+#             conf_threshold=effective_conf,
+#             orig_w=w,
+#             orig_h=h,
+#         )
+
+#         color_detector = _get_color_detector()
+#         detections = []
+
+#         for det in raw_detections:
+#             x1, y1, x2, y2 = map(int, det["bbox"])
+#             cls_id = int(det["class_id"])
+#             confv = float(det["confidence"])
+#             raw_cls_name = det["class_name"]
+#             cls_name = _normalize_clothes_label(raw_cls_name)
+
+#             x1 = max(0, min(w - 1, x1))
+#             x2 = max(0, min(w - 1, x2))
+#             y1 = max(0, min(h - 1, y1))
+#             y2 = max(0, min(h - 1, y2))
+#             if x2 <= x1 or y2 <= y1:
+#                 continue
+
+#             if cls_name == "dupatta" and confv < 0.28:
+#                 continue
+#             if cls_name == "shalwar" and confv < 0.33:
+#                 continue
+
+#             cx1, cy1, cx2, cy2 = _inner_crop_coords(x1, y1, x2, y2)
+#             crop = image[cy1:cy2, cx1:cx2]
+#             if crop.size == 0:
+#                 continue
+
+#             if (cx2 - cx1) * (cy2 - cy1) < 32 * 32:
+#                 color_result = {"name": "Unknown", "hex": None, "description": None}
+#             else:
+#                 ok, buf = cv2.imencode(".jpg", crop)
+#                 color_result = color_detector.detect_color_simple(buf.tobytes()) if ok else {"name": "Unknown"}
+
+#             color_name = color_result.get("name") or color_result.get("color_name") or "Unknown"
+
+#             detections.append({
+#                 "class_name": cls_name,
+#                 "class_id": cls_id,
+#                 "confidence": confv,
+#                 "bbox": {"x1": x1, "y1": y1, "x2": x2, "y2": y2},
+#                 "color": {"name": color_name, "hex": color_result.get("hex"), "raw": color_result},
+#                 "_y_center": (y1 + y2) / 2.0,
+#             })
+
+#         detections = _dedupe_same_class(detections)
+#         detections = _apply_dupatta_shalwar_rules(detections, h)
+#         detections.sort(key=lambda d: d["confidence"], reverse=True)
+#         for d in detections:
+#             d.pop("_y_center", None)
+
+#         print("num raw detections:", len(raw_detections))
+#         print("first 5 raw detections:", raw_detections[:5])
+#         print("final detections:", detections[:5])
+
+#         # tts_messages = [f"{d['color']['name']} {d['class_name']}" for d in detections[:3]]
+#         tts_messages = [d["color"]["name"] for d in detections[:3]]
+#         return {
+#             "success": True,
+#             "mode": "clothes_with_color",
+#             "count": len(detections),
+#             "detections": detections,
+#             "tts_messages": tts_messages,
+#         }
+
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         traceback.print_exc()
+#         raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/detect-objects-with-color")
 async def detect_objects_with_color(file: UploadFile = File(...), confidence: float = 0.25):
     try:
@@ -4113,27 +4312,13 @@ async def detect_objects_with_color(file: UploadFile = File(...), confidence: fl
         input_shape = clothes_model["input_shape"]
         input_dtype = clothes_model["input_dtype"]
 
-        #input_tensor, scale_x, scale_y = _preprocess_clothes_image(image, input_shape, input_dtype)
         input_tensor = _preprocess_clothes_image(image, input_shape, input_dtype)
-        
+
         interpreter.set_tensor(input_details[0]["index"], input_tensor)
         interpreter.invoke()
 
         output = interpreter.get_tensor(output_details[0]["index"])
 
-        print("input shape:", input_shape)
-        print("input dtype:", input_dtype)
-        print("output shape:", output.shape)
-        print("output dtype:", output.dtype)
-        print("first 20 values:", output.flatten()[:20])
-
-        # raw_detections = _parse_tflite_output(
-        #     output=output,
-        #     class_names=CLOTHES_CLASS_NAMES,
-        #     conf_threshold=effective_conf,
-        #     scale_x=scale_x,
-        #     scale_y=scale_y,
-        # )
         raw_detections = _parse_tflite_output(
             output=output,
             class_names=CLOTHES_CLASS_NAMES,
@@ -4170,19 +4355,37 @@ async def detect_objects_with_color(file: UploadFile = File(...), confidence: fl
                 continue
 
             if (cx2 - cx1) * (cy2 - cy1) < 32 * 32:
-                color_result = {"name": "Unknown", "hex": None, "description": None}
+                color_result = {
+                    "name": "Unknown",
+                    "hex": None,
+                    "visible_colors": [],
+                }
             else:
                 ok, buf = cv2.imencode(".jpg", crop)
-                color_result = color_detector.detect_color_simple(buf.tobytes()) if ok else {"name": "Unknown"}
+                color_result = (
+                    color_detector.detect_color_simple(
+                        buf.tobytes(),
+                        history_key=f"{cls_name}_{x1}_{y1}_{x2}_{y2}",
+                        max_colors=5,
+                    )
+                    if ok else
+                    {"name": "Unknown", "hex": None, "visible_colors": []}
+                )
 
-            color_name = color_result.get("name") or color_result.get("color_name") or "Unknown"
+            color_name = color_result.get("name") or "Unknown"
+            visible_colors = color_result.get("visible_colors", [])
 
             detections.append({
                 "class_name": cls_name,
                 "class_id": cls_id,
                 "confidence": confv,
                 "bbox": {"x1": x1, "y1": y1, "x2": x2, "y2": y2},
-                "color": {"name": color_name, "hex": color_result.get("hex"), "raw": color_result},
+                "color": {
+                    "name": color_name,
+                    "hex": color_result.get("hex"),
+                    "visible_colors": visible_colors,
+                    "raw": color_result,
+                },
                 "_y_center": (y1 + y2) / 2.0,
             })
 
@@ -4196,8 +4399,16 @@ async def detect_objects_with_color(file: UploadFile = File(...), confidence: fl
         print("first 5 raw detections:", raw_detections[:5])
         print("final detections:", detections[:5])
 
-        # tts_messages = [f"{d['color']['name']} {d['class_name']}" for d in detections[:3]]
-        tts_messages = [d["color"]["name"] for d in detections[:3]]
+        tts_messages = []
+        for d in detections[:3]:
+            color_list = d["color"].get("visible_colors", [])
+            color_names = [c["name"] for c in color_list[:5] if c.get("name")]
+            if color_names:
+                msg = ", ".join(color_names)
+            else:
+                msg = d["color"].get("name", "Unknown")
+            tts_messages.append(msg)
+
         return {
             "success": True,
             "mode": "clothes_with_color",
@@ -4211,7 +4422,6 @@ async def detect_objects_with_color(file: UploadFile = File(...), confidence: fl
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
-
 
 # ================================================================
 # Utility Endpoints
@@ -4239,5 +4449,4 @@ async def get_classes():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
 
