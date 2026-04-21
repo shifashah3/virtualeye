@@ -270,7 +270,7 @@ def main():
     try:
         # Step 2: Setup database
         db = setup_database(client)
-        if not db:
+        if db is None:
             print_error("Setup failed - Could not create database")
             sys.exit(1)
         

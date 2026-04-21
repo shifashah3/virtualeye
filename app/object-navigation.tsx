@@ -512,21 +512,21 @@ const ObjectNavigationScreen = () => {
         />
 
         {/* SCANNING */}
-        {isAutoDetecting && (
+        {/* {isAutoDetecting && (
           <View style={[styles.scanning, { backgroundColor: colors.primary }]}>
             <ActivityIndicator color={colors.textInverse} />
             <AccessibleText style={{ color: colors.textInverse }}>
               {t("objectNav.scanning")}
             </AccessibleText>
           </View>
-        )}
+        )} */}
 
         {/* RESULT */}
         {lastDetection !== "" && (
           <View style={[styles.result, { backgroundColor: colors.primary }]}>
             <AccessibleText
               style={{ color: colors.textInverse, fontSize: 28, fontWeight: "800" }}
-              accessibilityRole="alert"
+              // accessibilityRole="alert"
             >
               {lastDetection}
             </AccessibleText>

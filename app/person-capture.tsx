@@ -4064,7 +4064,7 @@ const onColor = (bg: string) => {
 };
 
 // Replace with your current Mac IP when testing on a real phone
-const BASE_URL = "http://192.168.18.206:8000";
+const BASE_URL = "http://192.168.1.14:8000";
 
 const PersonCaptureScreen = () => {
   const router = useRouter();
