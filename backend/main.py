@@ -3390,8 +3390,21 @@ async def register_person(payload: PersonRegisterRequest):
                     print(f"[register-person] No face found in image {idx}")
                     continue
 
+                # face_crop = largest_face["crop"]
+                # embedding = generate_embedding(face_crop)
+                # embeddings.append(embedding.tolist())
                 face_crop = largest_face["crop"]
-                embedding = generate_embedding(face_crop)
+                crop_landmarks = largest_face.get("crop_landmarks")
+
+                if face_crop.shape[0] < 60 or face_crop.shape[1] < 60:
+                    print(f"[register-person] Face too small in image {idx}")
+                    continue
+
+                # if face_embedding.is_blurry(face_crop):
+                #     print(f"[register-person] Blurry face in image {idx}")
+                #     continue
+
+                embedding = generate_embedding(face_crop, crop_landmarks)
                 embeddings.append(embedding.tolist())
 
             except Exception as inner_e:
@@ -3450,8 +3463,11 @@ async def recognize_person(payload: PersonRecognizeRequest):
                 "similarity": None,
             }
 
+        # face_crop = largest_face["crop"]
+        # embedding = generate_embedding(face_crop)
         face_crop = largest_face["crop"]
-        embedding = generate_embedding(face_crop)
+        crop_landmarks = largest_face.get("crop_landmarks")
+        embedding = generate_embedding(face_crop, crop_landmarks)
 
         db_persons = get_all_persons()
         if not db_persons:
@@ -3602,16 +3618,39 @@ async def api_person_register(request: LegacyPersonRegisterRequest):
                 print(f"[api_person_register] Image {i + 1}: Could not decode")
                 continue
 
-            faces = face_embedding.detect_face_and_crop(image)
+            # faces = face_embedding.detect_face_and_crop(image)
+            # if not faces:
+            #     print(f"[api_person_register] Image {i + 1}: No faces detected")
+            #     continue
+
+            # face_crop = faces[0]["crop"]
+            # emb = face_embedding.generate_embedding(face_crop)
+            # embeddings.append(emb.tolist())
+            # print(f"[api_person_register] Image {i + 1}: ✓ Extracted embedding")
+            faces = detect_faces_with_landmarks(image)
             if not faces:
                 print(f"[api_person_register] Image {i + 1}: No faces detected")
                 continue
 
-            face_crop = faces[0]["crop"]
-            emb = face_embedding.generate_embedding(face_crop)
-            embeddings.append(emb.tolist())
-            print(f"[api_person_register] Image {i + 1}: ✓ Extracted embedding")
+            largest_face = get_largest_face(faces)
+            if largest_face is None:
+                print(f"[api_person_register] Image {i + 1}: No usable face found")
+                continue
 
+            face_crop = largest_face["crop"]
+            crop_landmarks = largest_face.get("crop_landmarks")
+
+            if face_crop.shape[0] < 60 or face_crop.shape[1] < 60:
+                print(f"[api_person_register] Image {i + 1}: Face too small")
+                continue
+
+            # if face_embedding.is_blurry(face_crop):
+            #     print(f"[api_person_register] Image {i + 1}: Blurry face")
+            #     continue
+
+            emb = generate_embedding(face_crop, crop_landmarks)
+            embeddings.append(emb.tolist())
+            print(f"[api_person_register] Image {i + 1}: ✓ Extracted aligned embedding")
         if len(embeddings) == 0:
             return {"success": False, "error": "no_face_detected", "message": "Could not detect faces in any image"}
 
@@ -3663,16 +3702,39 @@ async def register_person(name: str, files: List[UploadFile] = File(...)):
                 print(f"[register] Image {i + 1}: Invalid image, skipping")
                 continue
 
-            faces = face_embedding.detect_face_and_crop(image)
+            # faces = face_embedding.detect_face_and_crop(image)
+            # if not faces:
+            #     print(f"[register] Image {i + 1}: No faces detected")
+            #     continue
+
+            # face_crop = faces[0]["crop"]
+            # emb = face_embedding.generate_embedding(face_crop)
+            # embeddings.append(emb.tolist())
+            # print(f"[register] Image {i + 1}: ✓ Extracted embedding")
+            faces = detect_faces_with_landmarks(image)
             if not faces:
                 print(f"[register] Image {i + 1}: No faces detected")
                 continue
 
-            face_crop = faces[0]["crop"]
-            emb = face_embedding.generate_embedding(face_crop)
-            embeddings.append(emb.tolist())
-            print(f"[register] Image {i + 1}: ✓ Extracted embedding")
+            largest_face = get_largest_face(faces)
+            if largest_face is None:
+                print(f"[register] Image {i + 1}: No usable face found")
+                continue
 
+            face_crop = largest_face["crop"]
+            crop_landmarks = largest_face.get("crop_landmarks")
+
+            if face_crop.shape[0] < 60 or face_crop.shape[1] < 60:
+                print(f"[register] Image {i + 1}: Face too small")
+                continue
+
+            # if face_embedding.is_blurry(face_crop):
+            #     print(f"[register] Image {i + 1}: Blurry face")
+            #     continue
+
+            emb = generate_embedding(face_crop, crop_landmarks)
+            embeddings.append(emb.tolist())
+            print(f"[register] Image {i + 1}: ✓ Extracted aligned embedding")
         if len(embeddings) == 0:
             raise HTTPException(status_code=400, detail="Could not extract embeddings. Make sure faces are clearly visible.")
 
@@ -3789,7 +3851,8 @@ async def object_navigation_detect(file: UploadFile = File(...), confidence: flo
                 label = "person"
                 similarity: Optional[float] = None
                 try:
-                    emb = face_embedding.generate_embedding(crop)
+                    #emb = face_embedding.generate_embedding(crop)
+                    emb = face_embedding.generate_embedding(crop, f.get("crop_landmarks"))
                     match = face_embedding.compare_embedding_to_db(emb, db_persons, threshold=0.6)
                     if match:
                         label, similarity = match

@@ -215,6 +215,7 @@ import torch
 from PIL import Image
 from facenet_pytorch import MTCNN
 from .mobile_facenet import MobileFaceNet
+import cv2
 
 _BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _ASSETS_DIR = os.path.join(_BACKEND_DIR, "assets")
@@ -263,6 +264,7 @@ def _load_state_dict_safely(model: torch.nn.Module, ckpt: Any) -> None:
                 nk = nk[len(prefix):]
         cleaned[nk] = v
 
+    #missing, unexpected = model.load_state_dict(cleaned, strict=False)
     missing, unexpected = model.load_state_dict(cleaned, strict=False)
     if missing:
         print("[face] WARNING missing keys:", missing[:20])
@@ -283,6 +285,76 @@ def _get_model() -> MobileFaceNet:
     return _model
 
 
+# def detect_faces_with_landmarks(bgr_image: np.ndarray) -> List[Dict[str, Any]]:
+#     """
+#     Returns:
+#     [
+#       {
+#         "crop": np.ndarray(BGR),
+#         "bbox": [x1, y1, x2, y2],
+#         "prob": float,
+#         "landmarks": {
+#             "left_eye": [x, y],
+#             "right_eye": [x, y],
+#             "nose": [x, y],
+#             "mouth_left": [x, y],
+#             "mouth_right": [x, y]
+#         }
+#       }
+#     ]
+#     """
+#     try:
+#         mtcnn = _get_mtcnn()
+#         rgb = bgr_image[:, :, ::-1]
+#         pil = Image.fromarray(rgb)
+
+#         boxes, probs, landmarks = mtcnn.detect(pil, landmarks=True)
+#         if boxes is None or len(boxes) == 0:
+#             return []
+
+#         h, w = bgr_image.shape[:2]
+#         results: List[Dict[str, Any]] = []
+
+#         for i, box in enumerate(boxes):
+#             prob = float(probs[i]) if probs is not None and probs[i] is not None else 0.0
+#             if prob < 0.90:
+#                 continue
+
+#             x1, y1, x2, y2 = map(int, box.tolist())
+#             x1 = max(0, min(w - 1, x1))
+#             x2 = max(0, min(w - 1, x2))
+#             y1 = max(0, min(h - 1, y1))
+#             y2 = max(0, min(h - 1, y2))
+
+#             if x2 <= x1 or y2 <= y1:
+#                 continue
+
+#             crop = bgr_image[y1:y2, x1:x2].copy()
+
+#             lm = landmarks[i] if landmarks is not None else None
+#             lm_dict = None
+#             if lm is not None and len(lm) == 5:
+#                 lm_dict = {
+#                     "left_eye": [float(lm[0][0]), float(lm[0][1])],
+#                     "right_eye": [float(lm[1][0]), float(lm[1][1])],
+#                     "nose": [float(lm[2][0]), float(lm[2][1])],
+#                     "mouth_left": [float(lm[3][0]), float(lm[3][1])],
+#                     "mouth_right": [float(lm[4][0]), float(lm[4][1])],
+#                 }
+
+#             results.append({
+#                 "crop": crop,
+#                 "bbox": [x1, y1, x2, y2],
+#                 "prob": prob,
+#                 "landmarks": lm_dict,
+#             })
+
+#         return results
+
+#     except Exception as e:
+#         print("[face] detect_faces_with_landmarks error:", e)
+#         traceback.print_exc()
+#         return []
 def detect_faces_with_landmarks(bgr_image: np.ndarray) -> List[Dict[str, Any]]:
     """
     Returns:
@@ -291,13 +363,8 @@ def detect_faces_with_landmarks(bgr_image: np.ndarray) -> List[Dict[str, Any]]:
         "crop": np.ndarray(BGR),
         "bbox": [x1, y1, x2, y2],
         "prob": float,
-        "landmarks": {
-            "left_eye": [x, y],
-            "right_eye": [x, y],
-            "nose": [x, y],
-            "mouth_left": [x, y],
-            "mouth_right": [x, y]
-        }
+        "landmarks": { ... },        # full-image landmarks for guidance
+        "crop_landmarks": { ... }    # crop-relative landmarks for alignment
       }
     ]
     """
@@ -331,7 +398,10 @@ def detect_faces_with_landmarks(bgr_image: np.ndarray) -> List[Dict[str, Any]]:
 
             lm = landmarks[i] if landmarks is not None else None
             lm_dict = None
+            crop_lm_dict = None
+
             if lm is not None and len(lm) == 5:
+                # Full-image landmarks -> keep for face_guidance.py
                 lm_dict = {
                     "left_eye": [float(lm[0][0]), float(lm[0][1])],
                     "right_eye": [float(lm[1][0]), float(lm[1][1])],
@@ -340,11 +410,21 @@ def detect_faces_with_landmarks(bgr_image: np.ndarray) -> List[Dict[str, Any]]:
                     "mouth_right": [float(lm[4][0]), float(lm[4][1])],
                 }
 
+                # Crop-relative landmarks -> use only for alignment before embedding
+                crop_lm_dict = {
+                    "left_eye": [float(lm[0][0] - x1), float(lm[0][1] - y1)],
+                    "right_eye": [float(lm[1][0] - x1), float(lm[1][1] - y1)],
+                    "nose": [float(lm[2][0] - x1), float(lm[2][1] - y1)],
+                    "mouth_left": [float(lm[3][0] - x1), float(lm[3][1] - y1)],
+                    "mouth_right": [float(lm[4][0] - x1), float(lm[4][1] - y1)],
+                }
+
             results.append({
                 "crop": crop,
                 "bbox": [x1, y1, x2, y2],
                 "prob": prob,
                 "landmarks": lm_dict,
+                "crop_landmarks": crop_lm_dict,
             })
 
         return results
@@ -353,7 +433,6 @@ def detect_faces_with_landmarks(bgr_image: np.ndarray) -> List[Dict[str, Any]]:
         print("[face] detect_faces_with_landmarks error:", e)
         traceback.print_exc()
         return []
-
 
 def detect_face_and_crop(bgr_image: np.ndarray) -> List[Dict[str, Any]]:
     results = detect_faces_with_landmarks(bgr_image)
@@ -365,24 +444,130 @@ def detect_face_and_crop(bgr_image: np.ndarray) -> List[Dict[str, Any]]:
         })
     return simplified
 
+def _align_face_from_crop_landmarks(
+    face_crop_bgr: np.ndarray,
+    crop_landmarks: Optional[Dict[str, Any]],
+    output_size: int = 112,
+) -> np.ndarray:
+    if not crop_landmarks:
+        return cv2.resize(face_crop_bgr, (output_size, output_size))
 
-def generate_embedding(face_crop_bgr: np.ndarray) -> np.ndarray:
+    left_eye = crop_landmarks.get("left_eye")
+    right_eye = crop_landmarks.get("right_eye")
+
+    if left_eye is None or right_eye is None:
+        return cv2.resize(face_crop_bgr, (output_size, output_size))
+
+    lx, ly = float(left_eye[0]), float(left_eye[1])
+    rx, ry = float(right_eye[0]), float(right_eye[1])
+
+    dx = rx - lx
+    dy = ry - ly
+    dist = np.sqrt(dx * dx + dy * dy)
+
+    if dist < 1e-6:
+        return cv2.resize(face_crop_bgr, (output_size, output_size))
+
+    angle = np.degrees(np.arctan2(dy, dx))
+    eyes_center = ((lx + rx) / 2.0, (ly + ry) / 2.0)
+
+    desired_left_eye = (0.35, 0.35)
+    desired_right_eye_x = 1.0 - desired_left_eye[0]
+    desired_dist = (desired_right_eye_x - desired_left_eye[0]) * output_size
+    scale = desired_dist / dist
+
+    M = cv2.getRotationMatrix2D(eyes_center, angle, scale)
+
+    tx = output_size * 0.5
+    ty = output_size * desired_left_eye[1]
+    M[0, 2] += tx - eyes_center[0]
+    M[1, 2] += ty - eyes_center[1]
+
+    aligned = cv2.warpAffine(
+        face_crop_bgr,
+        M,
+        (output_size, output_size),
+        flags=cv2.INTER_CUBIC,
+        borderMode=cv2.BORDER_REPLICATE,
+    )
+    return aligned
+# def generate_embedding(face_crop_bgr: np.ndarray) -> np.ndarray:
+#     model = _get_model()
+
+#     rgb = face_crop_bgr[:, :, ::-1]
+#     pil = Image.fromarray(rgb).resize((112, 112))
+
+#     x = torch.from_numpy(np.array(pil)).float() / 255.0
+#     x = x.permute(2, 0, 1).unsqueeze(0)
+#     x = (x - 0.5) / 0.5
+
+#     with torch.no_grad():
+#       emb = model(x.to(_DEVICE)).cpu().numpy()[0]
+
+#     norm = np.linalg.norm(emb) + 1e-12
+#     return emb / norm
+
+
+# def compare_embedding_to_db(
+#     emb: np.ndarray,
+#     db_persons: List[dict],
+#     threshold: float = 0.6
+# ) -> Optional[Tuple[str, float]]:
+#     emb = np.asarray(emb, dtype=np.float32).reshape(-1)
+#     emb_norm = np.linalg.norm(emb) + 1e-8
+#     emb = emb / emb_norm
+
+#     best_name = None
+#     best_sim = -1.0
+
+#     for person in db_persons:
+#         name = person.get("name", "unknown")
+#         embs_list = person.get("embeddings", [])
+
+#         for e in embs_list:
+#             e = np.asarray(e, dtype=np.float32).reshape(-1)
+#             e = e / (np.linalg.norm(e) + 1e-8)
+
+#             sim = float(np.dot(emb, e))
+#             if sim > best_sim:
+#                 best_sim = sim
+#                 best_name = name
+
+#     print(f"[match] best candidate: {best_name}, best cosine: {best_sim:.4f}, threshold: {threshold}")
+
+#     if best_sim >= threshold and best_name is not None:
+#         return best_name, best_sim
+#     return None
+
+def generate_embedding(
+    face_crop_bgr: np.ndarray,
+    crop_landmarks: Optional[Dict[str, Any]] = None
+) -> np.ndarray:
     model = _get_model()
 
-    rgb = face_crop_bgr[:, :, ::-1]
-    pil = Image.fromarray(rgb).resize((112, 112))
+    aligned_bgr = _align_face_from_crop_landmarks(
+        face_crop_bgr,
+        crop_landmarks=crop_landmarks,
+        output_size=112,
+    )
+
+    rgb = aligned_bgr[:, :, ::-1]
+    pil = Image.fromarray(rgb)
 
     x = torch.from_numpy(np.array(pil)).float() / 255.0
     x = x.permute(2, 0, 1).unsqueeze(0)
     x = (x - 0.5) / 0.5
 
     with torch.no_grad():
-      emb = model(x.to(_DEVICE)).cpu().numpy()[0]
+        emb = model(x.to(_DEVICE)).cpu().numpy()[0]
 
     norm = np.linalg.norm(emb) + 1e-12
     return emb / norm
 
-
+def is_blurry(face_crop_bgr: np.ndarray, threshold: float = 80.0) -> bool:
+    gray = cv2.cvtColor(face_crop_bgr, cv2.COLOR_BGR2GRAY)
+    score = cv2.Laplacian(gray, cv2.CV_64F).var()
+    return score < threshold
 def compare_embedding_to_db(
     emb: np.ndarray,
     db_persons: List[dict],
