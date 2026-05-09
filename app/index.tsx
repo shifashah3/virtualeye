@@ -1,5 +1,5 @@
 import { AccessibleText } from "@/components/AccessibleText";
-import { useAccessibility } from "@/contexts/AccessibilityContext";
+// import { useAccessibility } from "@/contexts/AccessibilityContext";
 import { useAccessibleColors } from "@/hooks/useAccessibleColors";
 import { Feather } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -9,14 +9,14 @@ import { useTranslation } from "react-i18next"; // Added for i18n
 
 const LoadingScreen = () => {
   const router = useRouter();
-  const { speak } = useAccessibility();
+  // const { speak } = useAccessibility();
   const colors = useAccessibleColors();
   const { t } = useTranslation();
 
-  useEffect(() => {
-    // FIX: Using localized announcement
-    speak?.(t("welcome.announcement"), true);
-  }, []);
+  // useEffect(() => {
+  //   // FIX: Using localized announcement
+  //   speak?.(t("welcome.announcement"), true);
+  // }, []);
 
   useEffect(() => {
     const timer = setTimeout(() => {

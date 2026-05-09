@@ -58,10 +58,10 @@ const CurrencyReaderScreen = () => {
     isAutoDetectingRef.current = isAutoDetecting;
   }, [isAutoDetecting]);
 
-  useEffect(() => {
-    speak?.(t("currencyReader.announcement"), true);
-    void checkConnection();
-  }, [i18n.language]);
+  // useEffect(() => {
+  //   speak?.(t("currencyReader.announcement"), true);
+  //   void checkConnection();
+  // }, [i18n.language]);
 
   useEffect(() => {
     if (isAutoDetecting && apiConnected) {
@@ -94,8 +94,8 @@ const CurrencyReaderScreen = () => {
     isAutoDetectingRef.current = true;
     lastSpokenRef.current = "";
     hapticFeedback?.("medium");
-    speak?.(t("objectDetection.startDetection"), true);
-  }, [autoStart, permission?.granted, apiConnected, hapticFeedback, speak, t]);
+    // speak?.(t("objectDetection.startDetection"), true);
+  }, [autoStart, permission?.granted, apiConnected, hapticFeedback, t]);
 
   const checkConnection = async () => {
     if (!isMountedRef.current) return;

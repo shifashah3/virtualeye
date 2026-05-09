@@ -98,14 +98,6 @@
   }
   ,
  "objectNav": {
-  "title": "Object Navigation",
-  "announcement": "Object navigation screen. Use the camera to detect objects.",
-  "allowCamera": "Allow Camera Access",
-  "scanning": "Scanning...",
-  "started": "Object navigation started",
-  "stopped": "Object navigation stopped",
-  "apiError": "Cannot connect to detection server",
-  "apiDisconnected": "API not connected",
   "personDetected": "Person detected on your {{position}}, {{distance}}",
   "unknownObject": "Unknown object"
 },

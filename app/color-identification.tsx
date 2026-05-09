@@ -135,13 +135,13 @@ export default function ColorIdentificationScreen() {
       lastAnnouncedLanguageRef.current = i18n.language;
 
       stopSpeaking?.();
-      speak?.(
-        t(
-          "color.announcement",
-          "Color identification screen. Use camera to identify clothing colors."
-        ),
-        true
-      );
+      // speak?.(
+      //   t(
+      //     "color.announcement",
+      //     "Color identification screen. Use camera to identify clothing colors."
+      //   ),
+      //   true
+      // );
     }
   }, [i18n.language, speak, stopSpeaking, t]);
 
@@ -196,7 +196,7 @@ export default function ColorIdentificationScreen() {
       if (consecutiveFailuresRef.current >= 3) {
         consecutiveFailuresRef.current = 0;
         hapticFeedback?.("warning");
-        speak?.(t("common.serverBusy", "Detection temporarily unavailable"), true);
+        // speak?.(t("common.serverBusy", "Detection temporarily unavailable"), true);
       }
     },
     [hapticFeedback, speak, t]
@@ -304,17 +304,34 @@ export default function ColorIdentificationScreen() {
     };
   }, [apiConnected, isAutoDetecting, captureAndDetect, clearDetectionLoop]);
 
+  // const goToModes = useCallback(() => {
+  //   clearDetectionLoop();
+  //   setIsAutoDetecting(false);
+  //   isAutoDetectingRef.current = false;
+  //   isDetectingRef.current = false;
+  //   hasAutoStartedRef.current = false;
+  //   consecutiveFailuresRef.current = 0;
+  //   lastSpokenDetectionRef.current = "";
+  //   setDetectedLabel("");
+  //   setColorHex("");
+  //   setDetectedColors([]);
+  //   router.replace("/features");
+  // }, [clearDetectionLoop, router]);
   const goToModes = useCallback(() => {
     clearDetectionLoop();
+
     setIsAutoDetecting(false);
     isAutoDetectingRef.current = false;
-    hasAutoStartedRef.current = false;
-    consecutiveFailuresRef.current = 0;
-    lastSpokenDetectionRef.current = "";
+    isDetectingRef.current = false;
+    apiConnectedRef.current = false;
+
     setDetectedLabel("");
     setColorHex("");
     setDetectedColors([]);
-    router.push("/features");
+
+    setTimeout(() => {
+      router.replace("/features");
+    }, 50);
   }, [clearDetectionLoop, router]);
 
   if (!permission) {

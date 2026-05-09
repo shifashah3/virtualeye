@@ -5,7 +5,7 @@ import { useAccessibleColors } from "@/hooks/useAccessibleColors";
 import { Feather } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useTranslation } from "react-i18next";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -15,11 +15,12 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { registerPerson } from "@/services/personRecognitionApi";
 
 const PersonNameScreen = () => {
   const router = useRouter();
   const { t } = useTranslation();
-  const { speak, hapticFeedback } = useAccessibility();
+  const { hapticFeedback } = useAccessibility();
   const colors = useAccessibleColors();
   const params = useLocalSearchParams<{ count?: string; imageUris?: string }>();
 
@@ -35,31 +36,41 @@ const PersonNameScreen = () => {
     console.error("Error parsing imageUris:", e);
   }
 
-  useEffect(() => {
-    speak?.(t("personName.announcement"), true);
-  }, []);
+  // useEffect(() => {
+  //   speak?.(t("personName.announcement"), true);
+  // }, []);
 
-  const handleContinue = () => {
+  // const handleContinue = () => {
+  const handleContinue = async () => {
     const trimmed = name.trim();
 
     if (!trimmed) {
-      speak?.(t("personName.emptyError"), true);
+      // speak?.(t("personName.emptyError"), true);
       hapticFeedback?.("error");
       inputRef.current?.focus?.();
       return;
     }
 
     hapticFeedback?.("medium");
-    speak?.(t("personName.saving", { name: trimmed }), true);
+    // speak?.(t("personName.saving", { name: trimmed }), true);
 
-    router.replace({
-      pathname: "/person-review",
-      params: {
-        name: trimmed,
-        count: params.count || "5",
-        imageUris: JSON.stringify(imageUris),
-      },
-    } as any);
+    // router.replace({
+    //   pathname: "/person-review",
+    //   params: {
+    //     name: trimmed,
+    //     count: params.count || "5",
+    //     imageUris: JSON.stringify(imageUris),
+    //   },
+    // } as any);
+    const result = await registerPerson(trimmed, imageUris);
+
+    if (result?.success) {
+      hapticFeedback?.("success");
+      router.replace("/features");
+    } else {
+      hapticFeedback?.("error");
+      inputRef.current?.focus?.();
+    }
   };
 
   return (
@@ -78,7 +89,7 @@ const PersonNameScreen = () => {
           <Pressable
             onPress={() => {
               hapticFeedback?.("light");
-              speak?.(t("common.back"), true);
+              // speak?.(t("common.back"), true);
               router.back();
             }}
             style={styles.backButton}
@@ -140,13 +151,20 @@ const PersonNameScreen = () => {
             />
           </View>
 
-          <AccessibleButton
+          {/* <AccessibleButton
             title={t("personName.continue")}
             onPress={handleContinue}
             accessibilityLabel={t("personName.continue")}
             accessibilityHint={t("personReview.saveHint")}
             style={styles.button}
-          />
+          /> */}
+          <AccessibleButton
+          title="Save Person"
+          onPress={handleContinue}
+          accessibilityLabel="Save person"
+          accessibilityHint="Saves the registered person"
+          style={styles.button}
+        />
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
