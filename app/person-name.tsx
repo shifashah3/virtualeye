@@ -16,6 +16,7 @@ import {
   View,
 } from "react-native";
 import { registerPerson } from "@/services/personRecognitionApi";
+import i18n from "../src/i18n";
 
 const PersonNameScreen = () => {
   const router = useRouter();
@@ -158,13 +159,26 @@ const PersonNameScreen = () => {
             accessibilityHint={t("personReview.saveHint")}
             style={styles.button}
           /> */}
-          <AccessibleButton
+          {/* <AccessibleButton
           title="Save Person"
           onPress={handleContinue}
           accessibilityLabel="Save person"
           accessibilityHint="Saves the registered person"
           style={styles.button}
-        />
+        /> */}
+        <AccessibleButton
+            title={i18n.language === "ur" ? "محفوظ کریں" : "Save Person"}
+            onPress={handleContinue}
+            accessibilityLabel={
+              i18n.language === "ur" ? "محفوظ کریں" : "Save person"
+            }
+            accessibilityHint={
+              i18n.language === "ur"
+                ? "رجسٹر شدہ شخص کو محفوظ کرتا ہے"
+                : "Saves the registered person"
+            }
+            style={styles.button}
+          />
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, StyleSheet, TouchableOpacity, View } from "react-native";
+import { Alert, I18nManager, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { useTranslation } from "react-i18next";
@@ -9,6 +9,16 @@ import { useAccessibility } from "@/contexts/AccessibilityContext";
 import { useAccessibleColors } from "@/hooks/useAccessibleColors";
 import { AccessibleText } from "@/components/AccessibleText";
 import { AccessibleButton } from "@/components/AccessibleButton";
+
+import {
+  speakUI,
+  stopTTS,  
+  speakUrduOpenAI,
+  speakEnglishOpenAI,
+  UI_URDU,
+} from "../services/ttsService";
+
+const OPENAI_API_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY ?? "";
 
 const FALLBACK_COLORS = {
   background: "#000000",
@@ -22,10 +32,55 @@ const FALLBACK_COLORS = {
   disabled: "#6b7280",
 };
 
+const DETECTION_DELAY_MS = 5000;
+
+async function translateColorOnly(
+  colorText: string,
+  lang: "en" | "ur"
+): Promise<string> {
+  if (!colorText) return "";
+  if (!OPENAI_API_KEY) return colorText;
+
+  const systemPrompt =
+    lang === "ur"
+      ? `Translate this colour detection result into short natural spoken Urdu.
+Reply ONLY in Urdu script.
+Do not explain.`
+      : `Convert this colour detection result into short natural spoken English.
+Reply ONLY with the spoken phrase.
+Do not explain.`;
+
+  try {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-4o-mini",
+        max_tokens: 80,
+        temperature: 0,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: colorText },
+        ],
+      }),
+    });
+
+    if (!response.ok) return colorText;
+
+    const data = await response.json();
+    return data?.choices?.[0]?.message?.content?.trim() || colorText;
+  } catch {
+    return colorText;
+  }
+}
+
 export default function ColorIdentificationScreen() {
   const router = useRouter();
   const { t, i18n } = useTranslation();
-  const { speak, stopSpeaking, hapticFeedback } = useAccessibility();
+  const { hapticFeedback } = useAccessibility();
 
   const hookColors = useAccessibleColors();
   const colors = useMemo(() => hookColors ?? FALLBACK_COLORS, [hookColors]);
@@ -33,43 +88,70 @@ export default function ColorIdentificationScreen() {
   const [permission, requestPermission] = useCameraPermissions();
 
   const [apiConnected, setApiConnected] = useState(false);
-  const [checkingApi, setCheckingApi] = useState(false);
   const [isAutoDetecting, setIsAutoDetecting] = useState(false);
-
   const [detectedLabel, setDetectedLabel] = useState("");
   const [colorHex, setColorHex] = useState("");
   const [detectedColors, setDetectedColors] = useState<string[]>([]);
 
+  const [lang, setLang] = useState<"en" | "ur">(
+    i18n.language === "ur" ? "ur" : "en"
+  );
+
   const cameraRef = useRef<CameraView>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const sessionRef = useRef(0);
   const isMountedRef = useRef(true);
   const isDetectingRef = useRef(false);
+  const isSpeakingRef = useRef(false);
   const apiConnectedRef = useRef(false);
   const isAutoDetectingRef = useRef(false);
   const hasAutoStartedRef = useRef(false);
-
   const lastSpokenDetectionRef = useRef("");
   const consecutiveFailuresRef = useRef(0);
+  const langRef = useRef(lang);
+  const shouldStopEverythingRef = useRef(false);
 
-  const hasAnnouncedRef = useRef(false);
-  const lastAnnouncedLanguageRef = useRef<string | null>(null);
+  useEffect(() => {
+    langRef.current = lang;
+  }, [lang]);
+
+  const clearDetectionLoop = useCallback(() => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }, []);
+
+  const hardStopColorMode = useCallback(() => {
+    sessionRef.current += 1;
+    shouldStopEverythingRef.current = true;
+
+    clearDetectionLoop();
+    stopTTS();
+
+    isAutoDetectingRef.current = false;
+    isDetectingRef.current = false;
+    isSpeakingRef.current = false;
+    apiConnectedRef.current = false;
+    hasAutoStartedRef.current = false;
+    lastSpokenDetectionRef.current = "";
+
+    setIsAutoDetecting(false);
+    setDetectedLabel("");
+    setColorHex("");
+    setDetectedColors([]);
+  }, [clearDetectionLoop]);
 
   useEffect(() => {
     isMountedRef.current = true;
+    shouldStopEverythingRef.current = false;
 
     return () => {
       isMountedRef.current = false;
-
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
-
-      isDetectingRef.current = false;
-      isAutoDetectingRef.current = false;
+      hardStopColorMode();
     };
-  }, []);
+  }, [hardStopColorMode]);
 
   useEffect(() => {
     apiConnectedRef.current = apiConnected;
@@ -79,22 +161,19 @@ export default function ColorIdentificationScreen() {
     isAutoDetectingRef.current = isAutoDetecting;
   }, [isAutoDetecting]);
 
-  const clearDetectionLoop = useCallback(() => {
-    if (timeoutRef.current) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-  }, []);
-
   const checkConnection = useCallback(async () => {
-    if (!isMountedRef.current) return;
-
-    setCheckingApi(true);
+    const mySession = sessionRef.current;
 
     try {
       const ok = await checkApiHealth();
 
-      if (!isMountedRef.current) return;
+      if (
+        mySession !== sessionRef.current ||
+        !isMountedRef.current ||
+        shouldStopEverythingRef.current
+      ) {
+        return;
+      }
 
       setApiConnected(ok);
       apiConnectedRef.current = ok;
@@ -108,7 +187,13 @@ export default function ColorIdentificationScreen() {
     } catch (error) {
       console.log("[ColorIdentification] API health check failed:", error);
 
-      if (!isMountedRef.current) return;
+      if (
+        mySession !== sessionRef.current ||
+        !isMountedRef.current ||
+        shouldStopEverythingRef.current
+      ) {
+        return;
+      }
 
       setApiConnected(false);
       apiConnectedRef.current = false;
@@ -116,39 +201,19 @@ export default function ColorIdentificationScreen() {
       isAutoDetectingRef.current = false;
       hasAutoStartedRef.current = false;
       clearDetectionLoop();
-    } finally {
-      if (isMountedRef.current) {
-        setCheckingApi(false);
-      }
     }
   }, [clearDetectionLoop]);
 
   useEffect(() => {
+    shouldStopEverythingRef.current = false;
     void checkConnection();
   }, [checkConnection]);
-
-  useEffect(() => {
-    const languageChanged = lastAnnouncedLanguageRef.current !== i18n.language;
-
-    if (!hasAnnouncedRef.current || languageChanged) {
-      hasAnnouncedRef.current = true;
-      lastAnnouncedLanguageRef.current = i18n.language;
-
-      stopSpeaking?.();
-      // speak?.(
-      //   t(
-      //     "color.announcement",
-      //     "Color identification screen. Use camera to identify clothing colors."
-      //   ),
-      //   true
-      // );
-    }
-  }, [i18n.language, speak, stopSpeaking, t]);
 
   useEffect(() => {
     if (!apiConnected) return;
     if (!permission?.granted) return;
     if (hasAutoStartedRef.current) return;
+    if (shouldStopEverythingRef.current) return;
 
     hasAutoStartedRef.current = true;
     setIsAutoDetecting(true);
@@ -160,27 +225,80 @@ export default function ColorIdentificationScreen() {
   }, [apiConnected, permission?.granted, hapticFeedback]);
 
   const speakDetectionResult = useCallback(
-    (colorsList: string[], primaryHex: string) => {
+    async (colorsList: string[], primaryHex: string) => {
+      const mySession = sessionRef.current;
+
+      if (shouldStopEverythingRef.current) return;
+      if (!isMountedRef.current) return;
+      if (!isAutoDetectingRef.current) return;
+      if (isSpeakingRef.current) return;
+
       const cleanColors = colorsList.filter(Boolean);
-      const label = cleanColors.join(", ");
+      const rawLabel = cleanColors.join(", ");
+
+      if (!rawLabel) return;
 
       setDetectedColors(cleanColors);
-      setDetectedLabel(label);
       setColorHex(primaryHex);
+
       consecutiveFailuresRef.current = 0;
 
-      const speechKey = `${label.toLowerCase()}|${primaryHex.toLowerCase()}`;
-      if (lastSpokenDetectionRef.current !== speechKey) {
-        lastSpokenDetectionRef.current = speechKey;
-        hapticFeedback?.("success");
-        speak?.(label, true);
+      const speechKey = `${rawLabel.toLowerCase()}|${primaryHex.toLowerCase()}|${langRef.current}`;
+
+      if (lastSpokenDetectionRef.current === speechKey) return;
+
+      lastSpokenDetectionRef.current = speechKey;
+      isSpeakingRef.current = true;
+
+      hapticFeedback?.("success");
+
+      try {
+        const phrase = await translateColorOnly(rawLabel, langRef.current);
+
+        if (
+          mySession !== sessionRef.current ||
+          shouldStopEverythingRef.current ||
+          !isMountedRef.current ||
+          !isAutoDetectingRef.current
+        ) {
+          stopTTS();
+          return;
+        }
+
+        setDetectedLabel(phrase);
+
+        if (langRef.current === "ur") {
+          await speakUrduOpenAI(phrase);
+        } else {
+          await speakEnglishOpenAI(phrase);
+        }
+
+        if (
+          mySession !== sessionRef.current ||
+          shouldStopEverythingRef.current ||
+          !isMountedRef.current ||
+          !isAutoDetectingRef.current
+        ) {
+          stopTTS();
+          return;
+        }
+
+        await new Promise<void>((resolve) => {
+          timeoutRef.current = setTimeout(resolve, DETECTION_DELAY_MS);
+        });
+      } finally {
+        if (mySession === sessionRef.current) {
+          isSpeakingRef.current = false;
+        }
       }
     },
-    [hapticFeedback, speak]
+    [hapticFeedback]
   );
 
   const handleDetectionFailure = useCallback(
     (error: unknown) => {
+      if (shouldStopEverythingRef.current) return;
+
       console.log("[ColorIdentification] Detection failed:", error);
       consecutiveFailuresRef.current += 1;
 
@@ -196,17 +314,20 @@ export default function ColorIdentificationScreen() {
       if (consecutiveFailuresRef.current >= 3) {
         consecutiveFailuresRef.current = 0;
         hapticFeedback?.("warning");
-        // speak?.(t("common.serverBusy", "Detection temporarily unavailable"), true);
       }
     },
-    [hapticFeedback, speak, t]
+    [hapticFeedback, t]
   );
 
   const captureAndDetect = useCallback(async () => {
+    const mySession = sessionRef.current;
+
+    if (shouldStopEverythingRef.current) return;
     if (!apiConnectedRef.current) return;
     if (!permission?.granted) return;
     if (!cameraRef.current) return;
     if (isDetectingRef.current) return;
+    if (isSpeakingRef.current) return;
 
     isDetectingRef.current = true;
 
@@ -218,13 +339,27 @@ export default function ColorIdentificationScreen() {
         shutterSound: false,
       });
 
+      if (
+        mySession !== sessionRef.current ||
+        shouldStopEverythingRef.current ||
+        !isMountedRef.current
+      ) {
+        return;
+      }
+
       if (!photo?.uri) {
         throw new Error("Failed to capture photo");
       }
 
       const result: any = await detectClothesWithColor(photo.uri, 0.3);
 
-      if (!isMountedRef.current) return;
+      if (
+        mySession !== sessionRef.current ||
+        shouldStopEverythingRef.current ||
+        !isMountedRef.current
+      ) {
+        return;
+      }
 
       if (!result?.success) {
         throw new Error(result?.message || "Detection request failed");
@@ -238,7 +373,9 @@ export default function ColorIdentificationScreen() {
       const colorData = topDetection?.color;
 
       const visibleColors =
-        typeof colorData === "object" && colorData !== null && Array.isArray(colorData.visible_colors)
+        typeof colorData === "object" &&
+        colorData !== null &&
+        Array.isArray(colorData.visible_colors)
           ? colorData.visible_colors
           : [];
 
@@ -252,36 +389,37 @@ export default function ColorIdentificationScreen() {
           ? String(colorData.hex ?? "").trim()
           : "";
 
-      console.log("[ColorIdentification] FULL RESULT:", JSON.stringify(result, null, 2));
-      console.log("[ColorIdentification] TOP DETECTION:", topDetection);
-      console.log("[ColorIdentification] COLOR DATA:", colorData);
-      console.log("[ColorIdentification] VISIBLE COLORS:", visibleColors);
-      console.log("[ColorIdentification] COLOR NAMES:", colorNames);
-
       if (colorNames.length > 0) {
-        speakDetectionResult(colorNames, primaryHex);
-        return;
+        await speakDetectionResult(colorNames, primaryHex);
+      } else {
+        consecutiveFailuresRef.current = 0;
       }
-
-      consecutiveFailuresRef.current = 0;
     } catch (error) {
-      handleDetectionFailure(error);
+      if (
+        mySession === sessionRef.current &&
+        !shouldStopEverythingRef.current
+      ) {
+        handleDetectionFailure(error);
+      }
     } finally {
-      isDetectingRef.current = false;
+      if (mySession === sessionRef.current) {
+        isDetectingRef.current = false;
+      }
     }
   }, [handleDetectionFailure, permission?.granted, speakDetectionResult]);
 
   useEffect(() => {
     clearDetectionLoop();
 
-    if (!isAutoDetecting || !apiConnected) {
-      return;
-    }
+    if (!isAutoDetecting || !apiConnected) return;
 
     let cancelled = false;
+    const mySession = sessionRef.current;
 
     const runLoop = async () => {
       if (cancelled) return;
+      if (mySession !== sessionRef.current) return;
+      if (shouldStopEverythingRef.current) return;
       if (!isMountedRef.current) return;
       if (!isAutoDetectingRef.current) return;
       if (!apiConnectedRef.current) return;
@@ -289,11 +427,13 @@ export default function ColorIdentificationScreen() {
       await captureAndDetect();
 
       if (cancelled) return;
+      if (mySession !== sessionRef.current) return;
+      if (shouldStopEverythingRef.current) return;
       if (!isMountedRef.current) return;
       if (!isAutoDetectingRef.current) return;
       if (!apiConnectedRef.current) return;
 
-      timeoutRef.current = setTimeout(runLoop, 2000);
+      timeoutRef.current = setTimeout(runLoop, DETECTION_DELAY_MS);
     };
 
     void runLoop();
@@ -304,35 +444,42 @@ export default function ColorIdentificationScreen() {
     };
   }, [apiConnected, isAutoDetecting, captureAndDetect, clearDetectionLoop]);
 
-  // const goToModes = useCallback(() => {
-  //   clearDetectionLoop();
-  //   setIsAutoDetecting(false);
-  //   isAutoDetectingRef.current = false;
-  //   isDetectingRef.current = false;
-  //   hasAutoStartedRef.current = false;
-  //   consecutiveFailuresRef.current = 0;
-  //   lastSpokenDetectionRef.current = "";
-  //   setDetectedLabel("");
-  //   setColorHex("");
-  //   setDetectedColors([]);
-  //   router.replace("/features");
-  // }, [clearDetectionLoop, router]);
-  const goToModes = useCallback(() => {
-    clearDetectionLoop();
+  const handleLanguageToggle = async () => {
+    const mySession = sessionRef.current;
+    const next = lang === "en" ? "ur" : "en";
 
-    setIsAutoDetecting(false);
-    isAutoDetectingRef.current = false;
-    isDetectingRef.current = false;
-    apiConnectedRef.current = false;
+    stopTTS();
 
+    setLang(next);
+    langRef.current = next;
+    lastSpokenDetectionRef.current = "";
     setDetectedLabel("");
-    setColorHex("");
-    setDetectedColors([]);
 
-    setTimeout(() => {
+    await i18n.changeLanguage(next);
+
+    if (
+      mySession !== sessionRef.current ||
+      shouldStopEverythingRef.current ||
+      !isMountedRef.current
+    ) {
+      return;
+    }
+
+    hapticFeedback?.("medium");
+
+    speakUI(
+      next === "ur" ? UI_URDU.switched_urdu : "Language changed to English",
+      next
+    );
+  };
+
+  const goToModes = useCallback(() => {
+    hardStopColorMode();
+
+    requestAnimationFrame(() => {
       router.replace("/features");
-    }, 50);
-  }, [clearDetectionLoop, router]);
+    });
+  }, [router, hardStopColorMode]);
 
   if (!permission) {
     return <View style={[styles.root, { backgroundColor: colors.background }]} />;
@@ -342,12 +489,22 @@ export default function ColorIdentificationScreen() {
     return (
       <View style={[styles.root, { backgroundColor: colors.background }]}>
         <View style={[styles.topBar, { backgroundColor: colors.primary }]}>
-          <AccessibleText style={[styles.topTitle, { color: colors.textInverse }]} level={1}>
-            {t("color.title", "Color Identification")}
+          <AccessibleText
+            style={[styles.topTitle, { color: colors.textInverse }]}
+            level={1}
+          >
+            {lang === "ur"
+              ? "رنگ کی شناخت"
+              : t("color.title", "Color Identification")}
           </AccessibleText>
         </View>
 
-        <View style={[styles.permissionCenter, { backgroundColor: colors.background }]}>
+        <View
+          style={[
+            styles.permissionCenter,
+            { backgroundColor: colors.background },
+          ]}
+        >
           <AccessibleText style={{ color: colors.text }}>
             {t("common.cameraPermissionNeeded", "Camera permission is required.")}
           </AccessibleText>
@@ -359,7 +516,7 @@ export default function ColorIdentificationScreen() {
           />
 
           <AccessibleButton
-            title={t("common.modes", "Modes")}
+            title={lang === "ur" ? "واپس" : t("common.modes", "Modes")}
             onPress={goToModes}
             style={styles.permissionButton}
           />
@@ -371,8 +528,13 @@ export default function ColorIdentificationScreen() {
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <View style={[styles.topBar, { backgroundColor: colors.primary }]}>
-        <AccessibleText style={[styles.topTitle, { color: colors.textInverse }]} level={1}>
-          {t("color.title", "Color Identification")}
+        <AccessibleText
+          style={[styles.topTitle, { color: colors.textInverse }]}
+          level={1}
+        >
+          {lang === "ur"
+            ? "رنگ کی شناخت"
+            : t("color.title", "Color Identification")}
         </AccessibleText>
       </View>
 
@@ -381,14 +543,28 @@ export default function ColorIdentificationScreen() {
 
         {detectedLabel !== "" && (
           <View style={styles.resultContainer}>
-            <View style={[styles.colorSwatch, { backgroundColor: colorHex || "#000000" }]} />
-            <AccessibleText style={styles.resultText}>{detectedLabel.toUpperCase()}</AccessibleText>
-            {!!colorHex && <AccessibleText style={styles.hexText}>{colorHex}</AccessibleText>}
+            <View
+              style={[
+                styles.colorSwatch,
+                { backgroundColor: colorHex || "#000000" },
+              ]}
+            />
+
+            <AccessibleText style={styles.resultText}>
+              {detectedLabel.toUpperCase()}
+            </AccessibleText>
+
+            {!!colorHex && (
+              <AccessibleText style={styles.hexText}>{colorHex}</AccessibleText>
+            )}
 
             {detectedColors.length > 0 && (
               <View style={{ marginTop: 12 }}>
                 {detectedColors.map((color, index) => (
-                  <AccessibleText key={`${color}-${index}`} style={styles.hexText}>
+                  <AccessibleText
+                    key={`${color}-${index}`}
+                    style={styles.hexText}
+                  >
                     {index + 1}. {color}
                   </AccessibleText>
                 ))}
@@ -398,16 +574,26 @@ export default function ColorIdentificationScreen() {
         )}
       </View>
 
-      <View style={[styles.bottomBar, { backgroundColor: colors.background }]}>
+      <View
+        style={[
+          styles.bottomBar,
+          {
+            backgroundColor: colors.background,
+            flexDirection: I18nManager.isRTL ? "row-reverse" : "row",
+          },
+        ]}
+      >
         <AccessibleButton
-          title={t("common.modes", "Modes")}
+          title={lang === "ur" ? "واپس" : t("common.modes", "Modes")}
           onPress={goToModes}
           style={styles.bottomButton}
         />
 
         <AccessibleButton
-          title={i18n.language === "ur" ? "اردو" : "ENG"}
-          onPress={() => {}}
+          title={lang === "ur" ? "اردو" : "ENG"}
+          onPress={handleLanguageToggle}
+          accessibilityRole="switch"
+          accessibilityState={{ checked: lang === "ur" }}
           style={styles.bottomButton}
         />
       </View>
@@ -425,6 +611,7 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 8,
     borderBottomRightRadius: 8,
   },
+
   topTitle: { fontSize: 24, fontWeight: "800" },
 
   cameraContainer: { flex: 1 },
@@ -437,6 +624,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     gap: 16,
   },
+
   permissionButton: {
     paddingHorizontal: 24,
     paddingVertical: 16,
@@ -445,43 +633,6 @@ const styles = StyleSheet.create({
     minWidth: 220,
     alignItems: "center",
     justifyContent: "center",
-  },
-
-  statusOverlay: {
-    position: "absolute",
-    top: 20,
-    left: 20,
-    right: 20,
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 12,
-    borderRadius: 10,
-  },
-  statusDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginRight: 8,
-  },
-  statusText: { fontSize: 14, flex: 1 },
-  refreshButton: { padding: 6 },
-  refreshText: { fontSize: 18 },
-
-  detectingIndicator: {
-    position: "absolute",
-    top: 70,
-    left: 20,
-    right: 20,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 10,
-    borderRadius: 8,
-  },
-  detectingIndicatorText: {
-    fontSize: 14,
-    marginLeft: 8,
-    fontWeight: "600",
   },
 
   resultContainer: {
@@ -494,6 +645,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "rgba(0,0,0,0.85)",
   },
+
   colorSwatch: {
     width: 80,
     height: 80,
@@ -502,6 +654,7 @@ const styles = StyleSheet.create({
     borderWidth: 3,
     borderColor: "#FFFFFF",
   },
+
   resultText: {
     fontSize: 28,
     textAlign: "center",
@@ -509,6 +662,7 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     marginBottom: 8,
   },
+
   hexText: {
     fontSize: 16,
     textAlign: "center",
@@ -517,11 +671,11 @@ const styles = StyleSheet.create({
   },
 
   bottomBar: {
-    flexDirection: "row",
     justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingVertical: 12,
   },
+
   bottomButton: {
     flex: 1,
     height: 80,

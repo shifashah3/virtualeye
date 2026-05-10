@@ -1,11 +1,16 @@
 import * as FileSystem from "expo-file-system/legacy";
-import * as Speech from "expo-speech";
+// import * as Speech from "expo-speech";
 import { Platform } from "react-native";
-
+import i18n from "../src/i18n";
+import {
+  speakUrduOpenAI,
+  speakEnglishOpenAI,
+  stopTTS,
+} from "./ttsService";
 // =====================
 // Backend URL
 // =====================
-const BACKEND_IP = process.env.EXPO_PUBLIC_BACKEND_IP || "192.168.18.161";
+const BACKEND_IP = process.env.EXPO_PUBLIC_BACKEND_IP || "192.168.18.206";
 const BACKEND_PORT = process.env.EXPO_PUBLIC_BACKEND_PORT || "8000";
 export const BACKEND_URL = `http://${BACKEND_IP}:${BACKEND_PORT}`;
 
@@ -153,12 +158,45 @@ export async function registerPerson(
     const data: PersonRegisterResponse = await result.json();
     console.log("[PersonRecognitionAPI] Registration response:", data);
 
+    // if (data.success) {
+    //   await speakMessage(`Profile saved for ${name}`);
+    // } else {
+    //   let msg = data.message || "Registration failed";
+    //   if (data.error === "no_face_detected") msg = "No face detected. Try again.";
+    //   if (data.error === "duplicate_name") msg = `Name ${name} already exists.`;
+    //   await speakMessage(msg);
+    // }
     if (data.success) {
-      await speakMessage(`Profile saved for ${name}`);
+      const msg =
+        i18n.language === "ur"
+          ? `${name} کا پروفائل محفوظ ہو گیا`
+          : `Profile saved for ${name}`;
+
+      await speakMessage(msg);
     } else {
-      let msg = data.message || "Registration failed";
-      if (data.error === "no_face_detected") msg = "No face detected. Try again.";
-      if (data.error === "duplicate_name") msg = `Name ${name} already exists.`;
+      let msg =
+        i18n.language === "ur"
+          ? "رجسٹریشن ناکام ہو گئی"
+          : "Registration failed";
+
+      if (data.message) {
+        msg = data.message;
+      }
+
+      if (data.error === "no_face_detected") {
+        msg =
+          i18n.language === "ur"
+            ? "چہرہ نہیں ملا۔ دوبارہ کوشش کریں۔"
+            : "No face detected. Try again.";
+      }
+
+      if (data.error === "duplicate_name") {
+        msg =
+          i18n.language === "ur"
+            ? `${name} پہلے سے موجود ہے`
+            : `Name ${name} already exists.`;
+      }
+
       await speakMessage(msg);
     }
 
@@ -217,25 +255,47 @@ export async function detectObjectsAndPersons(
 // =====================
 // TTS helpers
 // =====================
-export async function speakMessage(text: string, language: string = "en") {
+// export async function speakMessage(text: string, language: string = "en") {
+//   try {
+//     if (!text || text.trim().length === 0) return;
+
+//     console.log(`[PersonRecognitionAPI] Speaking: "${text}"`);
+
+//     Speech.speak(text, {
+//       language,
+//       pitch: 1.0,
+//       rate: 1.0,
+//     });
+//   } catch (error) {
+//     console.error("[PersonRecognitionAPI] TTS error:", error);
+//   }
+// }
+export async function speakMessage(text: string) {
   try {
     if (!text || text.trim().length === 0) return;
 
     console.log(`[PersonRecognitionAPI] Speaking: "${text}"`);
 
-    Speech.speak(text, {
-      language,
-      pitch: 1.0,
-      rate: 1.0,
-    });
+    if (i18n.language === "ur") {
+      await speakUrduOpenAI(text);
+    } else {
+      await speakEnglishOpenAI(text);
+    }
   } catch (error) {
     console.error("[PersonRecognitionAPI] TTS error:", error);
   }
 }
 
+// export function stopSpeech() {
+//   try {
+//     Speech.stop();
+//   } catch (error) {
+//     console.error("[PersonRecognitionAPI] Stop speech error:", error);
+//   }
+// }
 export function stopSpeech() {
   try {
-    Speech.stop();
+    stopTTS();
   } catch (error) {
     console.error("[PersonRecognitionAPI] Stop speech error:", error);
   }
