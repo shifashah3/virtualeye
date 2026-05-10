@@ -13,6 +13,7 @@ import {
   View
 } from "react-native";
 import { checkApiHealth, detectCurrency } from "../services/detectionApi";
+// const { speak, hapticFeedback } = useAccessibility();
 
 const CurrencyReaderScreen = () => {
   const router = useRouter();
@@ -58,10 +59,10 @@ const CurrencyReaderScreen = () => {
     isAutoDetectingRef.current = isAutoDetecting;
   }, [isAutoDetecting]);
 
-  // useEffect(() => {
-  //   speak?.(t("currencyReader.announcement"), true);
-  //   void checkConnection();
-  // }, [i18n.language]);
+  useEffect(() => {
+    // speak?.(t("currencyReader.announcement"), true);
+    void checkConnection();
+  }, [i18n.language]);
 
   useEffect(() => {
     if (isAutoDetecting && apiConnected) {

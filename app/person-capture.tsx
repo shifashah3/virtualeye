@@ -95,7 +95,7 @@ const onColor = (bg: string) => {
 };
 
 // Replace with your current Mac IP
-const BASE_URL = "http://192.168.18.206:8000";
+const BASE_URL = "http://192.168.18.161:8000";
 
 const PersonCaptureScreen = () => {
   const router = useRouter();

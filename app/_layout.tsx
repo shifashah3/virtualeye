@@ -26,9 +26,9 @@ export default function RootLayout() {
           <Stack.Screen name="person-registration" options={{ headerShown: false }} />
           <Stack.Screen name="person-capture" options={{ headerShown: false }} />
           <Stack.Screen name="person-name" options={{ headerShown: false }} />
-          <Stack.Screen name="person-review" options={{ headerShown: false }} />
+          {/* <Stack.Screen name="person-review" options={{ headerShown: false }} /> */}
           <Stack.Screen name="features" options={{ headerShown: false }} />
-          <Stack.Screen name="settings" options={{ headerShown: false }} />
+          {/* <Stack.Screen name="settings" options={{ headerShown: false }} /> */}
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="modal" options={{ presentation: "modal", title: "Modal" }} />
         </Stack>
